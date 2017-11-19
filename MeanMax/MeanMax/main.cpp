@@ -7,7 +7,7 @@ using namespace std;
 
 /**
 * League : Wood 1
-* Rank : Top 250
+* Rank : 234
 **/
 
 /* Constants */
@@ -57,12 +57,17 @@ using namespace std;
 #define TANKER_FRICTION 0.40
 #define TANKER_RADIUS_BASE 400.0
 #define TANKER_RADIUS_BY_SIZE 50.0
+#define TANKER_MIN_SIZE 4
 
 #define WRECK_UNITID 4
 
 #define REAPER_SKILL_EFFECT 5
 #define DOOF_SKILL_EFFECT 6
 #define DESTROYER_SKILL_EFFECT 7
+
+#define MAX_THRUST 300
+#define MAX_RAGE 300
+#define WIN_SCORE 50
 
 /* Board classes */
 class Board;
@@ -682,6 +687,61 @@ void readInputs(Board& board, istream& stream)
 	board.linkUnits();
 }
 
+void strategy1(const Board& board)
+{
+	// Simple v1 just to test model : go to closest wreck
+	auto myReaper = board.players[0]->reaper;
+	const Wreck* reaperTarget = nullptr;
+	double minDistance2Reaper = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
+	for (auto it = board.wrecks.begin(); it != board.wrecks.end(); ++it)
+	{
+		double distance2 = myReaper->distance2(*it);
+		if (distance2 < minDistance2Reaper)
+		{
+			reaperTarget = &(*it);
+			minDistance2Reaper = distance2;
+		}
+	}
+
+	auto myDestroyer = board.players[0]->destroyer;
+	const Tanker* destroyerTarget = nullptr;
+	double minDistance2Destroyer = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
+	for (auto it = board.tankers.begin(); it != board.tankers.end(); ++it)
+	{
+		double distance2 = myDestroyer->distance2(*it);
+		if (distance2 < minDistance2Destroyer)
+		{
+			destroyerTarget = &(*it);
+			minDistance2Destroyer = distance2;
+		}
+	}
+
+	auto myDoof = board.players[0]->doof;
+
+	// Output Reaper
+	if (!reaperTarget || myReaper->isInRange(*reaperTarget, reaperTarget->radius))
+	{
+		cout << "WAIT" << endl;
+	}
+	else
+	{
+		cout << reaperTarget->x << " " << reaperTarget->y << " " << MAX_THRUST << endl;
+	}
+
+	// Output Destroyer
+	if (destroyerTarget)
+	{
+		cout << destroyerTarget->x << " " << destroyerTarget->y << " " << MAX_THRUST << endl;
+	}
+	else
+	{
+		cout << "WAIT" << endl;
+	}
+
+	// Output Doof		
+	cout << myDoof->y << " " << myDoof->y << " " << MAX_THRUST << endl;
+}
+
 int main()
 {
 	// Init board
@@ -694,83 +754,9 @@ int main()
 	// Game loop
 	while (1) {
 		// Read inputs
-		readInputs(board, cin);		
+		readInputs(board, cin);					
 
 		// Decide action
-
-		// Simple v1 just to test model : go to closest wreck
-		auto myReaper = board.players[0]->reaper;
-		Wreck* reaperTarget = nullptr;
-		double minDistance2Reaper = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
-		for (auto it = board.wrecks.begin(); it != board.wrecks.end(); ++it)
-		{
-			double distance2 = myReaper->distance2(*it);
-			if (distance2 < minDistance2Reaper)
-			{
-				reaperTarget = &(*it);
-				minDistance2Reaper = distance2;
-			}
-		}
-
-		auto myDestroyer = board.players[0]->destroyer;
-		Wreck* destroyerTarget1 = nullptr;
-		Tanker* destroyerTarget2 = nullptr;
-		double minDistance2Destroyer = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
-		for (auto it = board.wrecks.begin(); it != board.wrecks.end(); ++it)
-		{
-			double distance2 = myDestroyer->distance2(*it);
-			if (distance2 < minDistance2Destroyer)
-			{
-				destroyerTarget1 = &(*it);
-				minDistance2Destroyer = distance2;
-			}
-		}
-		for (auto it = board.tankers.begin(); it != board.tankers.end(); ++it)
-		{
-			double distance2 = myDestroyer->distance2(*it);
-			if (distance2 < minDistance2Destroyer)
-			{
-				destroyerTarget2 = &(*it);
-				minDistance2Destroyer = distance2;
-			}
-		}
-
-
-		// Output Reaper
-		if (!reaperTarget || myReaper->isInRange(*reaperTarget, reaperTarget->radius))
-		{
-			cout << "WAIT" << endl;
-		}
-		else
-		{
-			int acc = 300;
-			cout << reaperTarget->x << " " << reaperTarget->y << " " << acc << endl;
-		}
-		
-		// Output Destroyer
-		if (destroyerTarget1)
-		{
-			if (myDestroyer->isInRange(*destroyerTarget1, destroyerTarget1->radius))
-			{
-				cout << "WAIT" << endl;
-			}
-			else
-			{
-				int acc = 300;
-				cout << destroyerTarget1->x << " " << destroyerTarget1->y << " " << acc << endl;
-			}
-		}
-		else if (destroyerTarget2)
-		{
-			int acc = 300;
-			cout << destroyerTarget2->x << " " << destroyerTarget2->y << " " << acc << endl;
-		}		
-		else
-		{
-			cout << "WAIT" << endl;
-		}
-
-		// Output Doof
-		cout << "WAIT" << endl;
+		strategy1(board);
 	}
 }
