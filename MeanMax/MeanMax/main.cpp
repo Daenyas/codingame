@@ -6,7 +6,7 @@
 using namespace std;
 
 /**
-* League : Wood 3
+* League : Wood 2
 * Rank : 1
 **/
 
@@ -461,31 +461,75 @@ int main()
 
 		// Simple v1 just to test model : go to closest wreck
 		auto myReaper = board.players[0]->reaper;
-		Wreck* winner = nullptr;
-		double minDistance2 = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
+		Wreck* reaperTarget = nullptr;
+		double minDistance2Reaper = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
 		for (auto it = board.wrecks.begin(); it != board.wrecks.end(); ++it)
 		{
 			double distance2 = myReaper->distance2(*it);
-			if (distance2 < minDistance2)
+			if (distance2 < minDistance2Reaper)
 			{
-				winner = &(*it);
-				minDistance2 = distance2;
+				reaperTarget = &(*it);
+				minDistance2Reaper = distance2;
 			}
 		}
 
+		auto myDestroyer = board.players[0]->destroyer;
+		Wreck* destroyerTarget1 = nullptr;
+		Tanker* destroyerTarget2 = nullptr;
+		double minDistance2Destroyer = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
+		for (auto it = board.wrecks.begin(); it != board.wrecks.end(); ++it)
+		{
+			double distance2 = myDestroyer->distance2(*it);
+			if (distance2 < minDistance2Destroyer)
+			{
+				destroyerTarget1 = &(*it);
+				minDistance2Destroyer = distance2;
+			}
+		}
+		for (auto it = board.tankers.begin(); it != board.tankers.end(); ++it)
+		{
+			double distance2 = myDestroyer->distance2(*it);
+			if (distance2 < minDistance2Destroyer)
+			{
+				destroyerTarget2 = &(*it);
+				minDistance2Destroyer = distance2;
+			}
+		}
+
+
 		// Output Reaper
-		if (!winner || myReaper->isInRange(*winner, winner->radius))
+		if (!reaperTarget || myReaper->isInRange(*reaperTarget, reaperTarget->radius))
 		{
 			cout << "WAIT" << endl;
 		}
 		else
 		{
 			int acc = 300;
-			cout << winner->x << " " << winner->y << " " << acc << endl;
+			cout << reaperTarget->x << " " << reaperTarget->y << " " << acc << endl;
 		}
 		
 		// Ouput Destroyer
-		cout << "WAIT" << endl;
+		if (destroyerTarget1)
+		{
+			if (myDestroyer->isInRange(*destroyerTarget1, destroyerTarget1->radius))
+			{
+				cout << "WAIT" << endl;
+			}
+			else
+			{
+				int acc = 300;
+				cout << destroyerTarget1->x << " " << destroyerTarget1->y << " " << acc << endl;
+			}
+		}
+		else if (destroyerTarget2)
+		{
+			int acc = 300;
+			cout << destroyerTarget2->x << " " << destroyerTarget2->y << " " << acc << endl;
+		}		
+		else
+		{
+			cout << "WAIT" << endl;
+		}
 
 		// Not used yet
 		cout << "WAIT" << endl;
