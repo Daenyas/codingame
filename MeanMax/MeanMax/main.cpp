@@ -19,12 +19,24 @@ using namespace std;
 #define MAP_RADIUS 6000
 
 // Units
-#define UNITTYPE_WRECK 4
 #define LOOTER_RADIUS 400.0
 
-#define UNITTYPE_REAPER 0
-#define MASS_REAPER 0.5
-#define FRICTION_REAPER 0.20
+#define REAPER_UNITID 0
+#define REAPER_MASS 0.5
+#define REAPER_FRICTION 0.20
+
+#define DESTROYER_UNITID 1
+#define DESTROYER_MASS 1.5
+#define DESTROYER_FRICTION 0.30
+
+#define TANKER_UNITID 3
+#define TANKER_EMPTY_MASS 2.5
+#define TANKER_MASS_BY_WATER 0.5
+#define TANKER_FRICTION 0.40
+#define TANKER_RADIUS_BASE 400.0
+#define TANKER_RADIUS_BY_SIZE 50.0
+
+#define WRECK_UNITID 4
 
 /* Board classes */
 class Point 
@@ -192,24 +204,83 @@ public:
 	}
 };
 
-class Reaper : public Unit
+class Tanker : public Unit
 {
 public:
-	Reaper(int id, double x, double y, double vx, double vy) : Unit(UNITTYPE_REAPER, LOOTER_RADIUS, MASS_REAPER, FRICTION_REAPER, id, x, y, vx, vy)
-	{
-	}	
+	int water;
+	int size;
 
-	Reaper(const Reaper& other) : Unit(other)
+	Tanker(int id, double x, double y, double vx, double vy, int water, int size) : 
+		Unit(TANKER_UNITID, TANKER_RADIUS_BASE + TANKER_RADIUS_BY_SIZE * size, TANKER_EMPTY_MASS + TANKER_MASS_BY_WATER * water, TANKER_FRICTION, id, x, y, vx, vy), water(water), size(size)
 	{
 	}
 
-	Reaper& operator=(const Reaper& other)
+	Tanker(const Tanker& other) : Unit(other), water(other.water), size(other.size)
+	{
+	}
+
+	Tanker& operator=(const Tanker& other)
+	{
+		Unit::operator=(other);
+		this->water = water;
+		this->size = size;
+		return *this;
+	}
+};
+
+class Looter : public Unit 
+{
+protected:
+	Looter(int type, double mass, double friction, int id, double x, double y, double vx, double vy) : Unit(type, LOOTER_RADIUS, mass, friction, id, x, y, vx, vy)
+	{
+	}
+
+	Looter(const Looter& other) : Unit(other)
+	{
+	}
+
+	Looter& operator=(const Looter& other)
 	{
 		Unit::operator=(other);
 		return *this;
 	}
 };
 
+class Reaper : public Looter
+{
+public:
+	Reaper(int id, double x, double y, double vx, double vy) : Looter(REAPER_UNITID, REAPER_MASS, REAPER_FRICTION, id, x, y, vx, vy)
+	{
+	}	
+
+	Reaper(const Reaper& other) : Looter(other)
+	{
+	}
+
+	Reaper& operator=(const Reaper& other)
+	{
+		Looter::operator=(other);
+		return *this;
+	}
+};
+
+class Destroyer : public Looter
+{
+public:
+	Destroyer(int id, double x, double y, double vx, double vy) : Looter(DESTROYER_UNITID, DESTROYER_MASS, DESTROYER_FRICTION, id, x, y, vx, vy)
+	{
+	}
+
+	Destroyer(const Destroyer& other) : Looter(other)
+	{
+	}
+
+	Destroyer& operator=(const Destroyer& other)
+	{
+		Looter::operator=(other);
+		return *this;
+	}
+};
 
 class Player
 {
@@ -218,6 +289,7 @@ public:
 	int score;
 	int rage;
 	Reaper* reaper;
+	Destroyer* destroyer;
 
 	Player(int index, int score, int rage) : index(index), score(score), rage(rage)
 	{
@@ -229,6 +301,10 @@ public:
 		{
 			this->reaper = new Reaper(*other.reaper);
 		}
+		if (other.destroyer)
+		{
+			this->destroyer = new Destroyer(*other.destroyer);
+		}
 	}
 
 	Player& operator=(const Player& other)
@@ -236,15 +312,21 @@ public:
 		this->index = other.index;
 		this->score = other.score;
 		this->rage = other.rage;
+
 		if (other.reaper)
 		{
 			this->reaper = new Reaper(*other.reaper);
+		}
+		if (other.destroyer)
+		{
+			this->destroyer = new Destroyer(*other.destroyer);
 		}
 	}
 
 	~Player()
 	{
 		delete this->reaper;
+		delete this->destroyer;
 	}
 };
 
@@ -252,13 +334,14 @@ class Board
 {
 public:
 	Player* players[PLAYERS_COUNT];
+	vector<Tanker> tankers;
 	vector<Wreck> wrecks;
 	
 	Board()
 	{
 	}
 
-	Board(const Board& other) : wrecks(other.wrecks)
+	Board(const Board& other) : tankers(other.tankers), wrecks(other.wrecks)
 	{
 		for (int i = 0; i < PLAYERS_COUNT; ++i)
 		{
@@ -280,6 +363,7 @@ public:
 			}			
 		}
 
+		this->tankers = other.tankers;
 		this->wrecks = other.wrecks;
 	}
 
@@ -296,8 +380,10 @@ public:
 		for (int i = 0; i < PLAYERS_COUNT; ++i)
 		{
 			delete this->players[i]->reaper;
+			delete this->players[i]->destroyer;
 		}
 
+		this->tankers.clear();
 		this->wrecks.clear();
 	}
 };
@@ -339,10 +425,16 @@ void readInputs(Board& board, istream& stream)
 
 		switch (unitType)
 		{
-			case UNITTYPE_REAPER:
+			case REAPER_UNITID:
 				board.players[player]->reaper = new Reaper(unitId, x, y, vx, vy);
 				break;
-			case UNITTYPE_WRECK:
+			case DESTROYER_UNITID:
+				board.players[player]->destroyer = new Destroyer(unitId, x, y, vx, vy);
+				break;
+			case TANKER_UNITID:
+				board.tankers.push_back(Tanker(unitId, x, y, vx, vy, extra, extra2));
+				break;
+			case WRECK_UNITID:
 				board.wrecks.push_back(Wreck(unitId, x, y, extra, radius));
 				break;
 			default:
@@ -381,8 +473,8 @@ int main()
 			}
 		}
 
-		// Output
-		if (myReaper->isInRange(*winner, winner->radius))
+		// Output Reaper
+		if (!winner || myReaper->isInRange(*winner, winner->radius))
 		{
 			cout << "WAIT" << endl;
 		}
@@ -392,8 +484,10 @@ int main()
 			cout << winner->x << " " << winner->y << " " << acc << endl;
 		}
 		
-		// Not used yet
+		// Ouput Destroyer
 		cout << "WAIT" << endl;
+
+		// Not used yet
 		cout << "WAIT" << endl;
 	}
 }
