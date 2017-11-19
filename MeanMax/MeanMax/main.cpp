@@ -7,7 +7,7 @@ using namespace std;
 
 /**
 * League : Wood 1
-* Rank : 234
+* Rank : Top 1
 **/
 
 /* Constants */
@@ -73,7 +73,7 @@ using namespace std;
 class Board;
 class Unit;
 
-class Point 
+class Point
 {
 public:
 	double x;
@@ -117,7 +117,7 @@ public:
 	{
 		double d = this->distance(direction);
 
-		if (d < EPSILON) 
+		if (d < EPSILON)
 		{
 			return;
 		}
@@ -133,7 +133,7 @@ public:
 	bool isInRange(const Point& center, double range) const
 	{
 		return center != *this && this->distance(center) <= range;
-	}	
+	}
 
 	// Operators overloading
 	bool operator==(const Point& other) const
@@ -183,7 +183,7 @@ protected:
 	virtual void apply(Unit* unit) = 0;
 };
 
-class ReaperSkillEffect : public SkillEffect 
+class ReaperSkillEffect : public SkillEffect
 {
 public:
 	ReaperSkillEffect(int id, double x, double y) : SkillEffect(id, x, y, REAPER_SKILL_EFFECT, REAPER_SKILL_RADIUS, REAPER_SKILL_DURATION, REAPER_SKILL_ORDER)
@@ -243,7 +243,7 @@ public:
 	}
 
 protected:
-	void apply(Unit* unit);	
+	void apply(Unit* unit);
 };
 
 class Wreck : public Point
@@ -251,7 +251,7 @@ class Wreck : public Point
 public:
 	int id;
 	int water;
-	double radius;	
+	double radius;
 
 	Wreck(int id, double x, double y, int water, double radius) : Point(x, y), id(id), water(water), radius(radius)
 	{
@@ -281,19 +281,19 @@ public:
 
 	int id;
 	double vx;
-	double vy;	
+	double vy;
 
-// Should not try to construct a Unit, abstract concept
+	// Should not try to construct a Unit, abstract concept
 protected:
-	Unit(int type, double radius, double mass, double friction, int id, double x, double y, double vx, double vy) : 
+	Unit(int type, double radius, double mass, double friction, int id, double x, double y, double vx, double vy) :
 		Point(x, y), type(type), radius(radius), mass(mass), friction(friction), id(id), vx(vx), vy(vy)
-	{		
+	{
 	}
 
 	Unit(const Unit& other) : Point(other), type(other.type), radius(other.radius), mass(other.mass), friction(other.friction), id(other.id), vx(other.vx), vy(other.vy)
 	{
 	}
-	
+
 	Unit& operator=(const Unit& other)
 	{
 		Point::operator=(other);
@@ -302,14 +302,14 @@ protected:
 		this->radius = other.radius;
 		this->mass = other.mass;
 		this->friction = other.friction;
-		
+
 		this->id = other.id;
 		this->vx = other.vx;
 		this->vy = other.vy;
 	}
 
 public:
-	void move(double thrust) 
+	void move(double thrust)
 	{
 		this->x += this->vx * thrust;
 		this->y += this->vy * thrust;
@@ -326,7 +326,7 @@ public:
 		double distance = this->distance(direction);
 
 		// Avoid a division by zero
-		if (abs(distance) <= EPSILON) 
+		if (abs(distance) <= EPSILON)
 		{
 			return;
 		}
@@ -343,7 +343,7 @@ public:
 	int water;
 	int size;
 
-	Tanker(int id, double x, double y, double vx, double vy, int water, int size) : 
+	Tanker(int id, double x, double y, double vx, double vy, int water, int size) :
 		Unit(TANKER_UNITID, TANKER_RADIUS_BASE + TANKER_RADIUS_BY_SIZE * size, TANKER_EMPTY_MASS + TANKER_MASS_BY_WATER * water, TANKER_FRICTION, id, x, y, vx, vy), water(water), size(size)
 	{
 	}
@@ -361,14 +361,14 @@ public:
 	}
 };
 
-class Looter : public Unit 
+class Looter : public Unit
 {
 public:
 	int skillCost;
 	double skillRange;
 
 protected:
-	Looter(int type, double mass, double friction, int skillCost, double skillRange, int id, double x, double y, double vx, double vy) : 
+	Looter(int type, double mass, double friction, int skillCost, double skillRange, int id, double x, double y, double vx, double vy) :
 		Unit(type, LOOTER_RADIUS, mass, friction, id, x, y, vx, vy), skillCost(skillCost), skillRange(skillRange)
 	{
 	}
@@ -395,7 +395,7 @@ class Reaper : public Looter
 public:
 	Reaper(int id, double x, double y, double vx, double vy) : Looter(REAPER_UNITID, REAPER_MASS, REAPER_FRICTION, REAPER_SKILL_COST, REAPER_SKILL_RANGE, id, x, y, vx, vy)
 	{
-	}	
+	}
 
 	Reaper(const Reaper& other) : Looter(other)
 	{
@@ -468,7 +468,7 @@ public:
 	int index;
 	int score;
 	int rage;
-	
+
 	Reaper* reaper;
 	Destroyer* destroyer;
 	Doof* doof;
@@ -529,7 +529,7 @@ public:
 	vector<Tanker> tankers;
 	vector<Wreck> wrecks;
 	vector<Unit*> units;
-	
+
 	Board()
 	{
 	}
@@ -541,7 +541,7 @@ public:
 			if (other.players[i])
 			{
 				this->players[i] = new Player(*(other.players[i]));
-			}				
+			}
 		}
 
 		this->linkUnits();
@@ -555,7 +555,7 @@ public:
 			if (other.players[i])
 			{
 				this->players[i] = new Player(*(other.players[i]));
-			}			
+			}
 		}
 
 		this->tankers = other.tankers;
@@ -599,7 +599,7 @@ public:
 		for (auto it = this->tankers.begin(); it != this->tankers.end(); ++it)
 		{
 			this->units.push_back(&(*it));
-		}		
+		}
 	}
 };
 
@@ -643,7 +643,7 @@ void readInputs(Board& board, istream& stream)
 		stream >> rage; stream.ignore();
 		board.players[i]->rage = rage;
 	}
-	
+
 	board.resetUnits();
 	int unitCount;
 	stream >> unitCount; stream.ignore();
@@ -664,23 +664,23 @@ void readInputs(Board& board, istream& stream)
 
 		switch (unitType)
 		{
-			case REAPER_UNITID:
-				board.players[player]->reaper = new Reaper(unitId, x, y, vx, vy);
-				break;
-			case DESTROYER_UNITID:
-				board.players[player]->destroyer = new Destroyer(unitId, x, y, vx, vy);
-				break;
-			case DOOF_UNITID:
-				board.players[player]->doof = new Doof(unitId, x, y, vx, vy);
-				break;
-			case TANKER_UNITID:
-				board.tankers.push_back(Tanker(unitId, x, y, vx, vy, extra, extra2));
-				break;
-			case WRECK_UNITID:
-				board.wrecks.push_back(Wreck(unitId, x, y, extra, radius));
-				break;
-			default:
-				throw string("Unit Type not handled");
+		case REAPER_UNITID:
+			board.players[player]->reaper = new Reaper(unitId, x, y, vx, vy);
+			break;
+		case DESTROYER_UNITID:
+			board.players[player]->destroyer = new Destroyer(unitId, x, y, vx, vy);
+			break;
+		case DOOF_UNITID:
+			board.players[player]->doof = new Doof(unitId, x, y, vx, vy);
+			break;
+		case TANKER_UNITID:
+			board.tankers.push_back(Tanker(unitId, x, y, vx, vy, extra, extra2));
+			break;
+		case WRECK_UNITID:
+			board.wrecks.push_back(Wreck(unitId, x, y, extra, radius));
+			break;
+		default:
+			throw string("Unit Type not handled");
 		}
 	}
 
@@ -689,8 +689,12 @@ void readInputs(Board& board, istream& stream)
 
 void strategy1(const Board& board)
 {
-	// Simple v1 just to test model : go to closest wreck
+	// My units
 	auto myReaper = board.players[0]->reaper;
+	auto myDestroyer = board.players[0]->destroyer;
+	auto myDoof = board.players[0]->doof;
+
+	// Go to closest Wreck
 	const Wreck* reaperTarget = nullptr;
 	double minDistance2Reaper = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
 	for (auto it = board.wrecks.begin(); it != board.wrecks.end(); ++it)
@@ -703,7 +707,7 @@ void strategy1(const Board& board)
 		}
 	}
 
-	auto myDestroyer = board.players[0]->destroyer;
+	// Go to closest Tanker
 	const Tanker* destroyerTarget = nullptr;
 	double minDistance2Destroyer = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
 	for (auto it = board.tankers.begin(); it != board.tankers.end(); ++it)
@@ -716,30 +720,35 @@ void strategy1(const Board& board)
 		}
 	}
 
-	auto myDoof = board.players[0]->doof;
+	// Go to strongest ennemy reaper
+	Player* bestEnnemy = board.players[1]->score > board.players[2]->score ? board.players[1] : board.players[2];	
 
 	// Output Reaper
-	if (!reaperTarget || myReaper->isInRange(*reaperTarget, reaperTarget->radius))
+	if (!reaperTarget) // Anticipate and follow destroyer
+	{
+		cout << destroyerTarget->x << " " << destroyerTarget->y << " " << MAX_THRUST << endl;
+	}
+	else if (myReaper->isInRange(*reaperTarget, reaperTarget->radius)) // Stay in
 	{
 		cout << "WAIT" << endl;
 	}
-	else
+	else // GO GO GO
 	{
 		cout << reaperTarget->x << " " << reaperTarget->y << " " << MAX_THRUST << endl;
 	}
 
 	// Output Destroyer
-	if (destroyerTarget)
+	if (destroyerTarget) // GO GO GO
 	{
 		cout << destroyerTarget->x << " " << destroyerTarget->y << " " << MAX_THRUST << endl;
 	}
-	else
+	else // Should not happen
 	{
 		cout << "WAIT" << endl;
 	}
 
 	// Output Doof		
-	cout << myDoof->y << " " << myDoof->y << " " << MAX_THRUST << endl;
+	cout << bestEnnemy->reaper->x << " " << bestEnnemy->reaper->y << " " << MAX_THRUST << endl;
 }
 
 int main()
@@ -754,7 +763,7 @@ int main()
 	// Game loop
 	while (1) {
 		// Read inputs
-		readInputs(board, cin);					
+		readInputs(board, cin);
 
 		// Decide action
 		strategy1(board);
