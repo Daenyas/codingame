@@ -7,7 +7,7 @@ using namespace std;
 
 /**
 * League : Wood 1
-* Rank : Top 300
+* Rank : Top 250
 **/
 
 /* Constants */
@@ -24,14 +24,32 @@ using namespace std;
 #define REAPER_UNITID 0
 #define REAPER_MASS 0.5
 #define REAPER_FRICTION 0.20
+#define REAPER_SKILL_DURATION 3
+#define REAPER_SKILL_COST 30
+#define REAPER_SKILL_ORDER 0
+#define REAPER_SKILL_RANGE 2000.0
+#define REAPER_SKILL_RADIUS 1000.0
+#define REAPER_SKILL_MASS_BONUS 10.0
 
 #define DESTROYER_UNITID 1
 #define DESTROYER_MASS 1.5
 #define DESTROYER_FRICTION 0.30
+#define DESTROYER_SKILL_DURATION 1
+#define DESTROYER_SKILL_COST 60
+#define DESTROYER_SKILL_ORDER 2
+#define DESTROYER_SKILL_RANGE 2000.0
+#define DESTROYER_SKILL_RADIUS 1000.0
+#define DESTROYER_NITRO_GRENADE_POWER 1000
 
 #define DOOF_UNITID 2
 #define DOOF_MASS 1.0
 #define DOOF_FRICTION 0.25
+#define DOOF_RAGE_COEF 0.01
+#define DOOF_SKILL_DURATION 3
+#define DOOF_SKILL_COST 30
+#define DOOF_SKILL_ORDER 1
+#define DOOF_SKILL_RANGE 2000.0
+#define DOOF_SKILL_RADIUS 1000.0
 
 #define TANKER_UNITID 3
 #define TANKER_EMPTY_MASS 2.5
@@ -42,7 +60,14 @@ using namespace std;
 
 #define WRECK_UNITID 4
 
+#define REAPER_SKILL_EFFECT 5
+#define DOOF_SKILL_EFFECT 6
+#define DESTROYER_SKILL_EFFECT 7
+
 /* Board classes */
+class Board;
+class Unit;
+
 class Point 
 {
 public:
@@ -115,6 +140,105 @@ public:
 	{
 		return !(*this == other);
 	}
+};
+
+class SkillEffect : public Point
+{
+public:
+	int id;
+	int type;
+	double radius;
+	int duration;
+	int order;
+
+protected:
+	SkillEffect(int id, double x, double y, int type, double radius, int duration, int order) : Point(x, y), id(id), type(type), radius(radius), duration(duration), order(order)
+	{
+	}
+
+	SkillEffect(const SkillEffect& other) : Point(other), id(other.id), type(other.type), radius(other.radius), duration(other.duration), order(other.order)
+	{
+	}
+
+	SkillEffect& operator=(const SkillEffect& other)
+	{
+		Point::operator=(other);
+
+		this->id = other.id;
+		this->type = other.type;
+		this->radius = other.radius;
+		this->duration = other.duration;
+		this->order = other.order;
+	}
+
+public:
+	void apply(Board& board);
+
+protected:
+	virtual void apply(Unit* unit) = 0;
+};
+
+class ReaperSkillEffect : public SkillEffect 
+{
+public:
+	ReaperSkillEffect(int id, double x, double y) : SkillEffect(id, x, y, REAPER_SKILL_EFFECT, REAPER_SKILL_RADIUS, REAPER_SKILL_DURATION, REAPER_SKILL_ORDER)
+	{
+	}
+
+	ReaperSkillEffect(const ReaperSkillEffect& other) : SkillEffect(other.id, other.x, other.y, REAPER_SKILL_EFFECT, REAPER_SKILL_RADIUS, REAPER_SKILL_DURATION, REAPER_SKILL_ORDER)
+	{
+	}
+
+	ReaperSkillEffect& operator=(const ReaperSkillEffect& other)
+	{
+		SkillEffect::operator=(other);
+	}
+
+protected:
+	void apply(Unit* unit);
+};
+
+class DoofSkillEffect : public SkillEffect
+{
+public:
+	DoofSkillEffect(int id, double x, double y) : SkillEffect(id, x, y, DOOF_SKILL_EFFECT, DOOF_SKILL_RADIUS, DOOF_SKILL_DURATION, DOOF_SKILL_ORDER)
+	{
+	}
+
+	DoofSkillEffect(const DoofSkillEffect& other) : SkillEffect(other.id, other.x, other.y, DOOF_SKILL_EFFECT, DOOF_SKILL_RADIUS, DOOF_SKILL_DURATION, DOOF_SKILL_ORDER)
+	{
+	}
+
+	DoofSkillEffect& operator=(const DoofSkillEffect& other)
+	{
+		SkillEffect::operator=(other);
+	}
+
+protected:
+	void apply(Unit* unit)
+	{
+		// Nothing to do now
+	}
+};
+
+class DestroyerSkillEffect : public SkillEffect
+{
+public:
+	DestroyerSkillEffect(int id, double x, double y) : SkillEffect(id, x, y, DESTROYER_SKILL_EFFECT, DESTROYER_SKILL_RADIUS, DESTROYER_SKILL_DURATION, DESTROYER_SKILL_ORDER)
+	{
+	}
+
+	DestroyerSkillEffect(const DestroyerSkillEffect& other) : SkillEffect(other.id, other.x, other.y, DESTROYER_SKILL_EFFECT, DESTROYER_SKILL_RADIUS, DESTROYER_SKILL_DURATION, DESTROYER_SKILL_ORDER)
+	{
+	}
+
+	DestroyerSkillEffect& operator=(const DestroyerSkillEffect& other)
+	{
+		SkillEffect::operator=(other);
+	}
+
+protected:
+	void apply(Unit* unit);	
 };
 
 class Wreck : public Point
@@ -234,26 +358,37 @@ public:
 
 class Looter : public Unit 
 {
+public:
+	int skillCost;
+	double skillRange;
+
 protected:
-	Looter(int type, double mass, double friction, int id, double x, double y, double vx, double vy) : Unit(type, LOOTER_RADIUS, mass, friction, id, x, y, vx, vy)
+	Looter(int type, double mass, double friction, int skillCost, double skillRange, int id, double x, double y, double vx, double vy) : 
+		Unit(type, LOOTER_RADIUS, mass, friction, id, x, y, vx, vy), skillCost(skillCost), skillRange(skillRange)
 	{
 	}
 
-	Looter(const Looter& other) : Unit(other)
+	Looter(const Looter& other) : Unit(other), skillCost(other.skillCost), skillRange(other.skillRange)
 	{
 	}
 
 	Looter& operator=(const Looter& other)
 	{
 		Unit::operator=(other);
+
+		this->skillCost = other.skillCost;
+		this->skillRange = other.skillRange;
 		return *this;
 	}
+
+public:
+	virtual SkillEffect* skill(const Point& point) = 0;
 };
 
 class Reaper : public Looter
 {
 public:
-	Reaper(int id, double x, double y, double vx, double vy) : Looter(REAPER_UNITID, REAPER_MASS, REAPER_FRICTION, id, x, y, vx, vy)
+	Reaper(int id, double x, double y, double vx, double vy) : Looter(REAPER_UNITID, REAPER_MASS, REAPER_FRICTION, REAPER_SKILL_COST, REAPER_SKILL_RANGE, id, x, y, vx, vy)
 	{
 	}	
 
@@ -264,14 +399,20 @@ public:
 	Reaper& operator=(const Reaper& other)
 	{
 		Looter::operator=(other);
+
 		return *this;
+	}
+
+	virtual SkillEffect* skill(const Point& point)
+	{
+		return new ReaperSkillEffect(0, point.x, point.y);
 	}
 };
 
 class Destroyer : public Looter
 {
 public:
-	Destroyer(int id, double x, double y, double vx, double vy) : Looter(DESTROYER_UNITID, DESTROYER_MASS, DESTROYER_FRICTION, id, x, y, vx, vy)
+	Destroyer(int id, double x, double y, double vx, double vy) : Looter(DESTROYER_UNITID, DESTROYER_MASS, DESTROYER_FRICTION, DESTROYER_SKILL_COST, DESTROYER_SKILL_RANGE, id, x, y, vx, vy)
 	{
 	}
 
@@ -282,14 +423,20 @@ public:
 	Destroyer& operator=(const Destroyer& other)
 	{
 		Looter::operator=(other);
+
 		return *this;
+	}
+
+	virtual SkillEffect* skill(const Point& point)
+	{
+		return new DestroyerSkillEffect(0, point.x, point.y);
 	}
 };
 
 class Doof : public Looter
 {
 public:
-	Doof(int id, double x, double y, double vx, double vy) : Looter(DOOF_UNITID, DOOF_MASS, DOOF_FRICTION, id, x, y, vx, vy)
+	Doof(int id, double x, double y, double vx, double vy) : Looter(DOOF_UNITID, DOOF_MASS, DOOF_FRICTION, DOOF_SKILL_COST, DOOF_SKILL_RANGE, id, x, y, vx, vy)
 	{
 	}
 
@@ -300,7 +447,13 @@ public:
 	Doof& operator=(const Doof& other)
 	{
 		Looter::operator=(other);
+
 		return *this;
+	}
+
+	virtual SkillEffect* skill(const Point& point)
+	{
+		return new DoofSkillEffect(0, point.x, point.y);
 	}
 };
 
@@ -370,6 +523,7 @@ public:
 	Player* players[PLAYERS_COUNT];
 	vector<Tanker> tankers;
 	vector<Wreck> wrecks;
+	vector<Unit*> units;
 	
 	Board()
 	{
@@ -384,6 +538,8 @@ public:
 				this->players[i] = new Player(*(other.players[i]));
 			}				
 		}
+
+		this->linkUnits();
 	}
 
 	Board& operator=(const Board& other)
@@ -399,6 +555,8 @@ public:
 
 		this->tankers = other.tankers;
 		this->wrecks = other.wrecks;
+
+		this->linkUnits();
 	}
 
 	~Board()
@@ -421,7 +579,48 @@ public:
 		this->tankers.clear();
 		this->wrecks.clear();
 	}
+
+	void linkUnits()
+	{
+		this->units.clear();
+
+		for (int i = 0; i < PLAYERS_COUNT; ++i)
+		{
+			this->units.push_back(this->players[i]->reaper);
+			this->units.push_back(this->players[i]->destroyer);
+			this->units.push_back(this->players[i]->doof);
+		}
+
+		for (auto it = this->tankers.begin(); it != this->tankers.end(); ++it)
+		{
+			this->units.push_back(&(*it));
+		}		
+	}
 };
+
+void SkillEffect::apply(Board& board)
+{
+	this->duration -= 1;
+	for (auto it = board.units.begin(); it != board.units.end(); ++it)
+	{
+		if (this->isInRange(**it, this->radius + (*it)->radius))
+		{
+			apply(*it);
+		}
+	}
+}
+
+void ReaperSkillEffect::apply(Unit* unit)
+{
+	// Increase mass
+	unit->mass += REAPER_SKILL_MASS_BONUS;
+}
+
+void DestroyerSkillEffect::apply(Unit* unit)
+{
+	// Push units back
+	unit->thrust(*this, -DESTROYER_NITRO_GRENADE_POWER);
+}
 
 /* Game functions */
 void readInputs(Board& board, istream& stream)
@@ -479,6 +678,8 @@ void readInputs(Board& board, istream& stream)
 				throw string("Unit Type not handled");
 		}
 	}
+
+	board.linkUnits();
 }
 
 int main()
