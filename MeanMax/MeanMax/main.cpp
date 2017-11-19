@@ -6,8 +6,8 @@
 using namespace std;
 
 /**
-* League : Wood 2
-* Rank : 1
+* League : Wood 1
+* Rank : Top 300
 **/
 
 /* Constants */
@@ -28,6 +28,10 @@ using namespace std;
 #define DESTROYER_UNITID 1
 #define DESTROYER_MASS 1.5
 #define DESTROYER_FRICTION 0.30
+
+#define DOOF_UNITID 2
+#define DOOF_MASS 1.0
+#define DOOF_FRICTION 0.25
 
 #define TANKER_UNITID 3
 #define TANKER_EMPTY_MASS 2.5
@@ -282,14 +286,35 @@ public:
 	}
 };
 
+class Doof : public Looter
+{
+public:
+	Doof(int id, double x, double y, double vx, double vy) : Looter(DOOF_UNITID, DOOF_MASS, DOOF_FRICTION, id, x, y, vx, vy)
+	{
+	}
+
+	Doof(const Doof& other) : Looter(other)
+	{
+	}
+
+	Doof& operator=(const Doof& other)
+	{
+		Looter::operator=(other);
+		return *this;
+	}
+};
+
 class Player
 {
 public:
 	int index;
 	int score;
 	int rage;
+	
 	Reaper* reaper;
 	Destroyer* destroyer;
+	Doof* doof;
+
 
 	Player(int index, int score, int rage) : index(index), score(score), rage(rage)
 	{
@@ -304,6 +329,10 @@ public:
 		if (other.destroyer)
 		{
 			this->destroyer = new Destroyer(*other.destroyer);
+		}
+		if (other.doof)
+		{
+			this->doof = new Doof(*other.doof);
 		}
 	}
 
@@ -321,12 +350,17 @@ public:
 		{
 			this->destroyer = new Destroyer(*other.destroyer);
 		}
+		if (other.doof)
+		{
+			this->doof = new Doof(*other.doof);
+		}
 	}
 
 	~Player()
 	{
 		delete this->reaper;
 		delete this->destroyer;
+		delete this->doof;
 	}
 };
 
@@ -381,6 +415,7 @@ public:
 		{
 			delete this->players[i]->reaper;
 			delete this->players[i]->destroyer;
+			delete this->players[i]->doof;
 		}
 
 		this->tankers.clear();
@@ -430,6 +465,9 @@ void readInputs(Board& board, istream& stream)
 				break;
 			case DESTROYER_UNITID:
 				board.players[player]->destroyer = new Destroyer(unitId, x, y, vx, vy);
+				break;
+			case DOOF_UNITID:
+				board.players[player]->doof = new Doof(unitId, x, y, vx, vy);
 				break;
 			case TANKER_UNITID:
 				board.tankers.push_back(Tanker(unitId, x, y, vx, vy, extra, extra2));
@@ -508,7 +546,7 @@ int main()
 			cout << reaperTarget->x << " " << reaperTarget->y << " " << acc << endl;
 		}
 		
-		// Ouput Destroyer
+		// Output Destroyer
 		if (destroyerTarget1)
 		{
 			if (myDestroyer->isInRange(*destroyerTarget1, destroyerTarget1->radius))
@@ -531,7 +569,7 @@ int main()
 			cout << "WAIT" << endl;
 		}
 
-		// Not used yet
+		// Output Doof
 		cout << "WAIT" << endl;
 	}
 }
