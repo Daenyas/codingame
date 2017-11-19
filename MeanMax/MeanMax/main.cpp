@@ -6,8 +6,8 @@
 using namespace std;
 
 /**
-* League : Wood 1
-* Rank : Top 1
+* League : Bronze
+* Rank : 670
 **/
 
 /* Constants */
@@ -58,6 +58,9 @@ using namespace std;
 #define TANKER_RADIUS_BASE 400.0
 #define TANKER_RADIUS_BY_SIZE 50.0
 #define TANKER_MIN_SIZE 4
+#define TANKER_THRUST 500
+#define WATERTOWN_RADIUS 3000.0
+#define WATERTOWN Point(0,0)
 
 #define WRECK_UNITID 4
 
@@ -68,6 +71,41 @@ using namespace std;
 #define MAX_THRUST 300
 #define MAX_RAGE 300
 #define WIN_SCORE 50
+
+// Simulations
+#define SIMULATIONS_NUMBER 6000
+
+#define WAIT_ACTION 0
+#define MOVE_ACTION 1
+#define SKILL_ACTION 2
+
+/* Action class */
+class Action
+{
+public:
+	int type;
+	int x;
+	int y;
+	int throttel;
+
+	void print()
+	{
+		switch (this->type)
+		{
+			case WAIT_ACTION:
+				cout << "WAIT" << endl;
+				break;
+			case MOVE_ACTION:
+				cout << this->x << " " << this->y << " " << this->throttel << endl;
+				break;
+			case SKILL_ACTION:
+				cout << "SKILL " << this->x << " " << this->y << endl;
+				break;
+			default:
+				throw string("Action type not handled");
+		}
+	}
+};
 
 /* Board classes */
 class Board;
@@ -92,6 +130,8 @@ public:
 	{
 		this->x = other.x;
 		this->y = other.y;
+
+		return *this;
 	}
 
 	double distance(const Point& other) const
@@ -174,6 +214,8 @@ protected:
 		this->radius = other.radius;
 		this->duration = other.duration;
 		this->order = other.order;
+
+		return *this;
 	}
 
 public:
@@ -197,6 +239,8 @@ public:
 	ReaperSkillEffect& operator=(const ReaperSkillEffect& other)
 	{
 		SkillEffect::operator=(other);
+
+		return *this;
 	}
 
 protected:
@@ -217,6 +261,8 @@ public:
 	DoofSkillEffect& operator=(const DoofSkillEffect& other)
 	{
 		SkillEffect::operator=(other);
+
+		return *this;
 	}
 
 protected:
@@ -240,6 +286,8 @@ public:
 	DestroyerSkillEffect& operator=(const DestroyerSkillEffect& other)
 	{
 		SkillEffect::operator=(other);
+
+		return *this;
 	}
 
 protected:
@@ -268,6 +316,8 @@ public:
 		this->id = other.id;
 		this->water = other.water;
 		this->radius = other.radius;
+
+		return *this;
 	}
 };
 
@@ -306,6 +356,8 @@ protected:
 		this->id = other.id;
 		this->vx = other.vx;
 		this->vy = other.vy;
+
+		return *this;
 	}
 
 public:
@@ -355,9 +407,29 @@ public:
 	Tanker& operator=(const Tanker& other)
 	{
 		Unit::operator=(other);
+
 		this->water = water;
 		this->size = size;
+
 		return *this;
+	}
+
+	bool isFull() {
+		return this->water >= this->size;
+	}
+
+	void play()
+	{
+		if (isFull()) 
+		{
+			// Try to leave the map
+			this->thrust(WATERTOWN, -TANKER_THRUST);
+		}
+		else if (this->distance(WATERTOWN) > WATERTOWN_RADIUS)
+		{
+			// Try to reach watertown
+			this->thrust(WATERTOWN, TANKER_THRUST);
+		}
 	}
 };
 
@@ -366,6 +438,7 @@ class Looter : public Unit
 public:
 	int skillCost;
 	double skillRange;
+	const Action* action; // Reference already created action
 
 protected:
 	Looter(int type, double mass, double friction, int skillCost, double skillRange, int id, double x, double y, double vx, double vy) :
@@ -373,7 +446,8 @@ protected:
 	{
 	}
 
-	Looter(const Looter& other) : Unit(other), skillCost(other.skillCost), skillRange(other.skillRange)
+	Looter(const Looter& other) : 
+		Unit(other), skillCost(other.skillCost), skillRange(other.skillRange), action(other.action)
 	{
 	}
 
@@ -383,11 +457,21 @@ protected:
 
 		this->skillCost = other.skillCost;
 		this->skillRange = other.skillRange;
+		this->action = other.action;
+
 		return *this;
 	}
 
-public:
+public:	
 	virtual SkillEffect* skill(const Point& point) = 0;
+
+	void moveAction()
+	{
+		if (this->action->type == MOVE_ACTION)
+		{
+			this->thrust(Point(this->action->x, this->action->y), this->action->throttel);
+		}
+	}
 };
 
 class Reaper : public Looter
@@ -403,7 +487,7 @@ public:
 
 	Reaper& operator=(const Reaper& other)
 	{
-		Looter::operator=(other);
+		Looter::operator=(other);		
 
 		return *this;
 	}
@@ -528,7 +612,9 @@ public:
 	Player* players[PLAYERS_COUNT];
 	vector<Tanker> tankers;
 	vector<Wreck> wrecks;
-	vector<Unit*> units;
+	vector<Unit*> units; // Reference already created units
+
+	vector<SkillEffect> skillEffects;
 
 	Board()
 	{
@@ -562,6 +648,8 @@ public:
 		this->wrecks = other.wrecks;
 
 		this->linkUnits();
+
+		return *this;
 	}
 
 	~Board()
@@ -600,6 +688,42 @@ public:
 		{
 			this->units.push_back(&(*it));
 		}
+	}
+
+	void setPlayerActions(int playerId, const Action& reaperAction, const Action& destroyerAction, const Action& doofAction)
+	{
+		this->players[playerId]->reaper->action = &reaperAction;
+		this->players[playerId]->destroyer->action = &destroyerAction;
+		this->players[playerId]->doof->action = &doofAction;
+	}
+
+	void updateGame()
+	{
+		// Apply skill effects
+		for (auto it = this->skillEffects.begin(); it != this->skillEffects.end(); ++it)
+		{
+			it->apply(*this);
+		}
+
+		// Apply thrust for tankers
+		for (auto it = this->tankers.begin(); it != this->tankers.end(); ++it)
+		{
+			it->play();
+		}
+
+		// Apply wanted thrust for looters
+		for (int i = 0; i < PLAYERS_COUNT; ++i)
+		{
+			this->players[i]->reaper->moveAction();
+			this->players[i]->destroyer->moveAction();
+			this->players[i]->doof->moveAction();
+		}		
+
+		double t = 0.0;
+
+		// Play the round. Stop at each collisions and play it. Reapeat until t > 1.0
+
+		// TODO : To be continued...
 	}
 };
 
@@ -749,6 +873,20 @@ void strategy1(const Board& board)
 
 	// Output Doof		
 	cout << bestEnnemy->reaper->x << " " << bestEnnemy->reaper->y << " " << MAX_THRUST << endl;
+}
+
+void strategy2(const Board& board)
+{
+	// Monte Carlo Depth 1
+	Board simulationBoard;
+	for (int i = 0; i < SIMULATIONS_NUMBER; ++i)
+	{
+		// Copy board to simulate
+		simulationBoard = board;
+
+		// Generate actions
+
+	}
 }
 
 int main()
