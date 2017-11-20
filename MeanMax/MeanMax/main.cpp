@@ -1,13 +1,14 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <algorithm>
 #include <math.h>
 
 using namespace std;
 
 /**
 * League : Bronze
-* Rank : 670
+* Rank : 271
 **/
 
 /* Constants */
@@ -59,6 +60,7 @@ using namespace std;
 #define TANKER_RADIUS_BY_SIZE 50.0
 #define TANKER_MIN_SIZE 4
 #define TANKER_THRUST 500
+#define TANKER_SPAWN_RADIUS 8000.0
 #define WATERTOWN_RADIUS 3000.0
 #define WATERTOWN Point(0,0)
 
@@ -68,16 +70,22 @@ using namespace std;
 #define DOOF_SKILL_EFFECT 6
 #define DESTROYER_SKILL_EFFECT 7
 
+#define NULL_COLLISION Collision(1.0 + EPSILON)
+#define IMPULSE_COEFF 0.5
+#define MIN_IMPULSE 30.0
+
 #define MAX_THRUST 300
 #define MAX_RAGE 300
 #define WIN_SCORE 50
 
-// Simulations
-#define SIMULATIONS_NUMBER 6000
-
+// Actions
 #define WAIT_ACTION 0
 #define MOVE_ACTION 1
 #define SKILL_ACTION 2
+
+// Simulations
+#define SIMULATIONS_NUMBER 6000
+
 
 /* Action class */
 class Action
@@ -110,6 +118,8 @@ public:
 /* Board classes */
 class Board;
 class Unit;
+class Player;
+class Collision;
 
 class Point
 {
@@ -319,6 +329,9 @@ public:
 
 		return *this;
 	}
+
+	// Reaper harvesting
+	bool harvest(Player* players[PLAYERS_COUNT], const vector<SkillEffect>& skillEffects);
 };
 
 class Unit : public Point
@@ -361,10 +374,10 @@ protected:
 	}
 
 public:
-	void move(double thrust)
+	void move(double time)
 	{
-		this->x += this->vx * thrust;
-		this->y += this->vy * thrust;
+		this->x += this->vx * time;
+		this->y += this->vy * time;
 	}
 
 	double speed() const
@@ -378,7 +391,7 @@ public:
 		double distance = this->distance(direction);
 
 		// Avoid a division by zero
-		if (abs(distance) <= EPSILON)
+		if (fabs(distance) <= EPSILON)
 		{
 			return;
 		}
@@ -386,6 +399,127 @@ public:
 		double coef = (((double)power) / this->mass) / distance;
 		this->vx += (direction.x - this->x) * coef;
 		this->vy += (direction.y - this->y) * coef;
+	}
+
+	bool isInDoofSkill(const vector<SkillEffect>& skillEffects) const
+	{
+		for (auto it = skillEffects.begin(); it != skillEffects.end(); ++it)
+		{
+			if (it->type == DOOF_SKILL_EFFECT && this->isInRange(*it, it->radius + this->radius))
+			{
+				return true;
+			}
+		}
+		
+		return false;
+	}
+
+	void adjust(const vector<SkillEffect>& skillEffects) 
+	{
+		this->x = round(this->x);
+		this->y = round(this->y);
+		
+		if (this->isInDoofSkill(skillEffects)) 
+		{
+			// No friction if we are in a doof skill effect
+			this->vx = round(this->vx);
+			this->vy = round(this->vy);
+		}
+		else
+		{
+			this->vx = round(this->vx * (1.0 - this->friction));
+			this->vy = round(this->vy * (1.0 - this->friction));
+		}
+	}
+
+	// Search the next collision with the map border
+	virtual Collision getCollision();
+
+	// Search the next collision with an other unit
+	Collision getCollision(Unit* u);
+	
+	// Bounce with the map border
+	void bounce()
+	{
+		double mcoeff = 1.0 / this->mass;
+		double nxnysquare = this->x * this->x + this->y * this->y;
+		double product = (this->x * this->vx + this->y * this->vy) / (nxnysquare * mcoeff);
+		double fx = this->x * product;
+		double fy = this->y * product;
+
+		this->vx -= fx * mcoeff;
+		this->vy -= fy * mcoeff;
+
+		fx = fx * IMPULSE_COEFF;
+		fy = fy * IMPULSE_COEFF;
+
+		// Normalize vector at min or max impulse
+		double impulse = sqrt(fx * fx + fy * fy);
+		double coeff = 1.0;
+		if (impulse > EPSILON && impulse < MIN_IMPULSE)
+		{
+			coeff = MIN_IMPULSE / impulse;
+		}
+
+		fx = fx * coeff;
+		fy = fy * coeff;
+		this->vx -= fx * mcoeff;
+		this->vy -= fy * mcoeff;
+
+		double diff = distance(WATERTOWN) + this->radius - MAP_RADIUS;
+		if (diff >= 0.0) 
+		{
+			// Unit still outside of the map, reposition it
+			this->moveTo(WATERTOWN, diff + EPSILON);
+		}
+	}
+
+	// Bounce between 2 units
+	void bounce(Unit* u) 
+	{
+		double mcoeff = (this->mass + u->mass) / (this->mass * u->mass);
+		double nx = this->x - u->x;
+		double ny = this->y - u->y;
+		double nxnysquare = nx * nx + ny * ny;
+		double dvx = this->vx - u->vx;
+		double dvy = this->vy - u->vy;
+		double product = (nx * dvx + ny * dvy) / (nxnysquare * mcoeff);
+		double fx = nx * product;
+		double fy = ny * product;
+		double m1c = 1.0 / this->mass;
+		double m2c = 1.0 / u->mass;
+
+		this->vx -= fx * m1c;
+		this->vy -= fy * m1c;
+		u->vx += fx * m2c;
+		u->vy += fy * m2c;
+
+		fx = fx * IMPULSE_COEFF;
+		fy = fy * IMPULSE_COEFF;
+
+		// Normalize vector at min or max impulse
+		double impulse = sqrt(fx * fx + fy * fy);
+		double coeff = 1.0;
+		if (impulse > EPSILON && impulse < MIN_IMPULSE) 
+		{
+			coeff = MIN_IMPULSE / impulse;
+		}
+
+		fx = fx * coeff;
+		fy = fy * coeff;
+
+		this->vx -= fx * m1c;
+		this->vy -= fy * m1c;
+		u->vx += fx * m2c;
+		u->vy += fy * m2c;
+
+		double diff = (this->distance(*u) - this->radius - u->radius) / 2.0;
+		if (diff <= 0.0)
+		{
+			// Unit overlapping. Fix positions.
+			this->moveTo(*u, diff - EPSILON);
+			u->moveTo(*this, diff - EPSILON);
+		}
 	}
 };
 
@@ -414,6 +548,18 @@ public:
 		return *this;
 	}
 
+	Wreck* die()
+	{
+		// Don't spawn a wreck if our center is outside of the map
+		if (this->distance(WATERTOWN) >= MAP_RADIUS)
+		{
+			return nullptr;
+		}
+
+		// TODO : should handle new id with max of ids or something like this
+		return new Wreck(0, round(x), round(y), this->water, this->radius);
+	}
+
 	bool isFull() {
 		return this->water >= this->size;
 	}
@@ -431,6 +577,8 @@ public:
 			this->thrust(WATERTOWN, TANKER_THRUST);
 		}
 	}
+
+	Collision getCollision();	
 };
 
 class Looter : public Unit
@@ -606,6 +754,41 @@ public:
 	}
 };
 
+class Collision 
+{
+public:
+	double t;
+	Unit* a;
+	Unit* b;
+
+	Collision(double t) : t(t)
+	{
+	}
+
+	Collision(double t, Unit* a) : t(t), a(a)
+	{
+	}
+
+	Collision(double t, Unit* a, Unit* b) : t(t), a(a), b(b)
+	{
+	}
+
+	Tanker* dead() const
+	{
+		if (a->type == DESTROYER_UNITID && b->type == TANKER_UNITID && b->mass < REAPER_SKILL_MASS_BONUS)
+		{
+			return (Tanker*)b;
+		}
+
+		if (b->type == DESTROYER_UNITID && a->type == TANKER_UNITID && a->mass < REAPER_SKILL_MASS_BONUS)
+		{
+			return (Tanker*)a;
+		}
+
+		return nullptr;
+	}
+};
+
 class Board
 {
 public:
@@ -697,6 +880,35 @@ public:
 		this->players[playerId]->doof->action = &doofAction;
 	}
 
+	// Get the next collision for the current round
+	// All units are tested
+	Collision getNextCollision() 
+	{
+		Collision result = NULL_COLLISION;
+
+		for (auto it = this->units.begin(); it != this->units.end(); ++it)
+		{
+			// Test collision with map border first
+			Collision collision = (*it)->getCollision();
+
+			if (collision.t < result.t) {
+				result = collision;
+			}
+			
+			for (auto it2 = it; it2 != this->units.end(); ++it2)
+			{
+				collision = (*it)->getCollision(*it2);
+
+				if (collision.t < result.t) {
+					result = collision;
+				}
+			}
+		}
+
+		return result;
+	}
+
+
 	void updateGame()
 	{
 		// Apply skill effects
@@ -723,9 +935,150 @@ public:
 
 		// Play the round. Stop at each collisions and play it. Reapeat until t > 1.0
 
-		// TODO : To be continued...
+		Collision collision = getNextCollision();
+
+		while (collision.t + t <= 1.0)
+		{
+			double delta = collision.t;
+
+			// move of delta time
+			for (auto it = this->units.begin(); it != this->units.end(); ++it)
+			{
+				(*it)->move(delta);
+			}
+			t += collision.t;
+
+			this->playCollision(collision);
+
+			collision = getNextCollision();
+		}
+
+		// No more collision. Move units until the end of the round
+		double delta = 1.0 - t;
+		for (auto it = this->units.begin(); it != this->units.end(); ++it)
+		{
+			(*it)->move(delta);
+		}
+
+		for (auto it = this->tankers.begin(); it != this->tankers.end();)
+		{
+			double distance = it->distance(WATERTOWN);
+			bool full = it->isFull();
+
+			if (distance <= WATERTOWN_RADIUS && !full) 
+			{
+				// A non full tanker in watertown collect some water
+				it->water += 1;
+				it->mass += TANKER_MASS_BY_WATER;
+			}
+			else if (distance >= TANKER_SPAWN_RADIUS + it->radius && full)
+			{
+				// Remove too far away and not full tankers from the game
+
+				// Remove from units
+				vector<Unit *>::iterator it2;
+				for (it2 = this->units.begin(); it2 != this->units.end(); ++it2)
+				{
+					if ((*it2)->id == it->id)
+					{
+						this->units.erase(it2);
+						break;
+					}
+				}
+
+				// Remove from tankers
+				it = this->tankers.erase(it);
+				continue;
+			}
+
+			++it;
+		}
+
+		// TODO : Spawn new tankers for each dead tanker during the round
+		// Water collection for reapers
+		for (auto it = this->wrecks.begin(); it != this->wrecks.end();)
+		{
+			bool alive = it->harvest(this->players, this->skillEffects);
+			
+			if (!alive)
+			{
+				// TODO : Spawn new tanker
+
+				// Remove from wrecks
+				it = this->wrecks.erase(it);				
+				continue;
+			}
+
+			++it;
+		}		
+
+		// Round values and apply friction
+		this->adjust();
+	}
+	
+	void adjust()
+	{
+		for (auto it = this->units.begin(); it != this->units.end(); ++it)
+		{
+			(*it)->adjust(this->skillEffects);
+		}
+	}
+
+	// Play a collision
+	void playCollision(const Collision& collision) 
+	{
+		if (!collision.b)
+		{
+			// Bounce with border
+			collision.a->bounce();
+		}
+		else
+		{
+			Tanker* dead = collision.dead();
+
+			if (dead) 
+			{
+				// A destroyer kill a tanker				
+				Wreck* wreck = dead->die();
+
+				// If a tanker is too far away, there's no wreck
+				if (wreck) 
+				{
+					this->wrecks.push_back(*wreck);
+					delete wreck;
+				}
+
+				// Remove from units
+				vector<Unit *>::iterator it;
+				for (it = this->units.begin(); it != this->units.end(); ++it)
+				{
+					if ((*it)->id == dead->id)
+					{
+						this->units.erase(it);
+						break;
+					}
+				}
+
+				// Remove from tankers
+				vector<Tanker>::iterator it2;
+				for (it2 = this->tankers.begin(); it2 != this->tankers.end(); ++it2)
+				{
+					if (it2->id == dead->id)
+					{
+						this->tankers.erase(it2);
+						break;
+					}
+				}
+			}
+			else 
+			{
+				// Bounce between two units
+				collision.a->bounce(collision.b);
+			}
+		}
 	}
 };
+
 
 void SkillEffect::apply(Board& board)
 {
@@ -750,6 +1103,128 @@ void DestroyerSkillEffect::apply(Unit* unit)
 	// Push units back
 	unit->thrust(*this, -DESTROYER_NITRO_GRENADE_POWER);
 }
+
+bool Wreck::harvest(Player* players[PLAYERS_COUNT], const vector<SkillEffect>& skillEffects)
+{
+	for (int i = 0; i < PLAYERS_COUNT; ++i)
+	{
+		auto reaper = players[i]->reaper;
+		if (this->isInRange(*reaper, radius) && !reaper->isInDoofSkill(skillEffects))
+		{
+			players[i]->score += 1;
+			water -= 1;
+		}
+	}
+
+	return this->water > 0;
+}
+
+Collision Unit::getCollision()
+{
+	// Check instant collision
+	if (this->distance(WATERTOWN) + this->radius >= MAP_RADIUS)
+	{
+		return Collision(0.0, this);
+	}
+
+	// We are not moving, we can't reach the map border
+	if (fabs(this->vx) < EPSILON && fabs(this->vy) < EPSILON)
+	{
+		return NULL_COLLISION;
+	}
+
+	// Search collision with map border
+	// Resolving: sqrt((x + t*vx)^2 + (y + t*vy)^2) = MAP_RADIUS - radius <=> t^2*(vx^2 + vy^2) + t*2*(x*vx + y*vy) + x^2 + y^2 - (MAP_RADIUS - radius)^2 = 0
+	// at^2 + bt + c = 0;
+	// a = vx^2 + vy^2
+	// b = 2*(x*vx + y*vy)
+	// c = x^2 + y^2 - (MAP_RADIUS - radius)^2
+
+	double a = this->vx * this->vx + this->vy * this->vy;
+
+	if (a <= 0.0)
+	{
+		return NULL_COLLISION;
+	}
+
+	double b = 2.0 * (this->x * this->vx + this->y * this->vy);
+	double c = this->x * this->x + this->y * this->y - (MAP_RADIUS - this->radius) * (MAP_RADIUS - this->radius);
+	double delta = b * b - 4.0 * a * c;
+
+	if (delta <= 0.0)
+	{
+		return NULL_COLLISION;
+	}
+
+	double t = (-b + sqrt(delta)) / (2.0 * a);
+
+	if (t <= 0.0)
+	{
+		return NULL_COLLISION;
+	}
+
+	return Collision(t, this);
+}
+
+Collision Unit::getCollision(Unit* u)
+{
+	// Check instant collision
+	if (this->distance(*u) <= this->radius + u->radius) {
+		return Collision(0.0, this, u);
+	}
+
+	// Both units are motionless
+	if (fabs(this->vx) < EPSILON && fabs(this->vy) < EPSILON && fabs(u->vx) < EPSILON && fabs(u->vy) < EPSILON)
+	{
+		return NULL_COLLISION;
+	}
+
+	// Change referencial
+	// Unit u is not at point (0, 0) with a speed vector of (0, 0)
+	double x2 = this->x - u->x;
+	double y2 = this->y - u->y;
+	double r2 = this->radius + u->radius;
+	double vx2 = this->vx - u->vx;
+	double vy2 = this->vy - u->vy;
+
+	// Resolving: sqrt((x + t*vx)^2 + (y + t*vy)^2) = radius <=> t^2*(vx^2 + vy^2) + t*2*(x*vx + y*vy) + x^2 + y^2 - radius^2 = 0
+	// at^2 + bt + c = 0;
+	// a = vx^2 + vy^2
+	// b = 2*(x*vx + y*vy)
+	// c = x^2 + y^2 - radius^2 
+
+	double a = vx2 * vx2 + vy2 * vy2;
+
+	if (a <= 0.0)
+	{
+		return NULL_COLLISION;
+	}
+
+	double b = 2.0 * (x2 * vx2 + y2 * vy2);
+	double c = x2 * x2 + y2 * y2 - r2 * r2;
+	double delta = b * b - 4.0 * a * c;
+
+	if (delta < 0.0)
+	{
+		return NULL_COLLISION;
+	}
+
+	double t = (-b - sqrt(delta)) / (2.0 * a);
+
+	if (t <= 0.0)
+	{
+		return NULL_COLLISION;
+	}
+
+	return Collision(t, this, u);
+}
+
+Collision Tanker::getCollision()
+{
+	// Tankers can go outside of the map
+	return NULL_COLLISION;
+}
+
 
 /* Game functions */
 void readInputs(Board& board, istream& stream)
