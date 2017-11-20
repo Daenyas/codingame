@@ -3,6 +3,11 @@
 #include <vector>
 #include <algorithm>
 #include <math.h>
+#include <time.h>
+#include <chrono>
+
+// Compiler optimizations on CG
+//#pragma GCC optimize "Ofast,omit-frame-pointer,inline,unroll-loops"
 
 using namespace std;
 
@@ -84,7 +89,7 @@ using namespace std;
 #define SKILL_ACTION 2
 
 // Simulations
-#define SIMULATIONS_NUMBER 6000
+#define SIMULATIONS_NUMBER 200
 
 
 /* Action class */
@@ -110,7 +115,9 @@ public:
 				cout << "SKILL " << this->x << " " << this->y << endl;
 				break;
 			default:
-				throw string("Action type not handled");
+				cout << "WAIT" << endl;
+				cerr << "Unknown Action Type " << this->type << endl;
+				break;
 		}
 	}
 };
@@ -237,12 +244,12 @@ protected:
 
 class ReaperSkillEffect : public SkillEffect
 {
-public:
-	ReaperSkillEffect(int id, double x, double y) : SkillEffect(id, x, y, REAPER_SKILL_EFFECT, REAPER_SKILL_RADIUS, REAPER_SKILL_DURATION, REAPER_SKILL_ORDER)
+public:	
+	ReaperSkillEffect(int id, double x, double y, int duration) : SkillEffect(id, x, y, REAPER_SKILL_EFFECT, REAPER_SKILL_RADIUS, duration, REAPER_SKILL_ORDER)
 	{
 	}
 
-	ReaperSkillEffect(const ReaperSkillEffect& other) : SkillEffect(other.id, other.x, other.y, REAPER_SKILL_EFFECT, REAPER_SKILL_RADIUS, REAPER_SKILL_DURATION, REAPER_SKILL_ORDER)
+	ReaperSkillEffect(const ReaperSkillEffect& other) : SkillEffect(other.id, other.x, other.y, other.id, other.radius, other.duration, other.order)
 	{
 	}
 
@@ -260,11 +267,11 @@ protected:
 class DoofSkillEffect : public SkillEffect
 {
 public:
-	DoofSkillEffect(int id, double x, double y) : SkillEffect(id, x, y, DOOF_SKILL_EFFECT, DOOF_SKILL_RADIUS, DOOF_SKILL_DURATION, DOOF_SKILL_ORDER)
+	DoofSkillEffect(int id, double x, double y, int duration) : SkillEffect(id, x, y, DOOF_SKILL_EFFECT, DOOF_SKILL_RADIUS, duration, DOOF_SKILL_ORDER)
 	{
 	}
 
-	DoofSkillEffect(const DoofSkillEffect& other) : SkillEffect(other.id, other.x, other.y, DOOF_SKILL_EFFECT, DOOF_SKILL_RADIUS, DOOF_SKILL_DURATION, DOOF_SKILL_ORDER)
+	DoofSkillEffect(const DoofSkillEffect& other) : SkillEffect(other.id, other.x, other.y, other.id, other.radius, other.duration, other.order)
 	{
 	}
 
@@ -285,11 +292,11 @@ protected:
 class DestroyerSkillEffect : public SkillEffect
 {
 public:
-	DestroyerSkillEffect(int id, double x, double y) : SkillEffect(id, x, y, DESTROYER_SKILL_EFFECT, DESTROYER_SKILL_RADIUS, DESTROYER_SKILL_DURATION, DESTROYER_SKILL_ORDER)
+	DestroyerSkillEffect(int id, double x, double y, int duration) : SkillEffect(id, x, y, DESTROYER_SKILL_EFFECT, DESTROYER_SKILL_RADIUS, duration, DESTROYER_SKILL_ORDER)
 	{
 	}
 
-	DestroyerSkillEffect(const DestroyerSkillEffect& other) : SkillEffect(other.id, other.x, other.y, DESTROYER_SKILL_EFFECT, DESTROYER_SKILL_RADIUS, DESTROYER_SKILL_DURATION, DESTROYER_SKILL_ORDER)
+	DestroyerSkillEffect(const DestroyerSkillEffect& other) : SkillEffect(other.id, other.x, other.y, other.id, other.radius, other.duration, other.order)
 	{
 	}
 
@@ -331,7 +338,7 @@ public:
 	}
 
 	// Reaper harvesting
-	bool harvest(Player* players[PLAYERS_COUNT], const vector<SkillEffect>& skillEffects);
+	bool harvest(Player* players[PLAYERS_COUNT], const vector<SkillEffect* >& skillEffects);
 };
 
 class Unit : public Point
@@ -401,11 +408,11 @@ public:
 		this->vy += (direction.y - this->y) * coef;
 	}
 
-	bool isInDoofSkill(const vector<SkillEffect>& skillEffects) const
+	bool isInDoofSkill(const vector<SkillEffect *>& skillEffects) const
 	{
 		for (auto it = skillEffects.begin(); it != skillEffects.end(); ++it)
 		{
-			if (it->type == DOOF_SKILL_EFFECT && this->isInRange(*it, it->radius + this->radius))
+			if ((*it)->type == DOOF_SKILL_EFFECT && this->isInRange(**it, (*it)->radius + this->radius))
 			{
 				return true;
 			}
@@ -414,7 +421,7 @@ public:
 		return false;
 	}
 
-	void adjust(const vector<SkillEffect>& skillEffects) 
+	void adjust(const vector<SkillEffect *>& skillEffects) 
 	{
 		this->x = round(this->x);
 		this->y = round(this->y);
@@ -642,7 +649,7 @@ public:
 
 	virtual SkillEffect* skill(const Point& point)
 	{
-		return new ReaperSkillEffect(0, point.x, point.y);
+		return new ReaperSkillEffect(0, point.x, point.y, REAPER_SKILL_DURATION);
 	}
 };
 
@@ -666,7 +673,7 @@ public:
 
 	virtual SkillEffect* skill(const Point& point)
 	{
-		return new DestroyerSkillEffect(0, point.x, point.y);
+		return new DestroyerSkillEffect(0, point.x, point.y, DESTROYER_SKILL_DURATION);
 	}
 };
 
@@ -690,7 +697,7 @@ public:
 
 	virtual SkillEffect* skill(const Point& point)
 	{
-		return new DoofSkillEffect(0, point.x, point.y);
+		return new DoofSkillEffect(0, point.x, point.y, DOOF_SKILL_DURATION);
 	}
 };
 
@@ -751,6 +758,10 @@ public:
 		delete this->reaper;
 		delete this->destroyer;
 		delete this->doof;
+
+		this->reaper = nullptr;
+		this->destroyer = nullptr;
+		this->doof = nullptr;
 	}
 };
 
@@ -796,11 +807,14 @@ public:
 	vector<Tanker> tankers;
 	vector<Wreck> wrecks;
 	vector<Unit*> units; // Reference already created units
-
-	vector<SkillEffect> skillEffects;
+	vector<SkillEffect*> skillEffects; // Need pointers because SkillEffect is abstract
 
 	Board()
 	{
+		for (int i = 0; i < PLAYERS_COUNT; ++i)
+		{
+			this->players[i] = nullptr;
+		}
 	}
 
 	Board(const Board& other) : tankers(other.tankers), wrecks(other.wrecks)
@@ -811,19 +825,29 @@ public:
 			{
 				this->players[i] = new Player(*(other.players[i]));
 			}
+			else
+			{
+				this->players[i] = nullptr;
+			}
 		}
 
 		this->linkUnits();
+
+		// TODO : copy skill effects
 	}
 
 	Board& operator=(const Board& other)
 	{
 		for (int i = 0; i < PLAYERS_COUNT; ++i)
 		{
-			delete this->players[i];
+			delete this->players[i];			
 			if (other.players[i])
 			{
 				this->players[i] = new Player(*(other.players[i]));
+			}
+			else
+			{
+				this->players[i] = nullptr;
 			}
 		}
 
@@ -831,6 +855,8 @@ public:
 		this->wrecks = other.wrecks;
 
 		this->linkUnits();
+
+		// TODO : copy skill effects
 
 		return *this;
 	}
@@ -840,6 +866,12 @@ public:
 		for (int i = 0; i < PLAYERS_COUNT; ++i)
 		{
 			delete this->players[i];
+			this->players[i] = nullptr;
+		}
+
+		for (auto it = this->skillEffects.begin(); it != this->skillEffects.end(); ++it)
+		{
+			delete *it;			
 		}
 	}
 
@@ -850,6 +882,10 @@ public:
 			delete this->players[i]->reaper;
 			delete this->players[i]->destroyer;
 			delete this->players[i]->doof;
+
+			this->players[i]->reaper = nullptr;
+			this->players[i]->destroyer = nullptr;
+			this->players[i]->doof = nullptr;
 		}
 
 		this->tankers.clear();
@@ -873,11 +909,11 @@ public:
 		}
 	}
 
-	void setPlayerActions(int playerId, const Action& reaperAction, const Action& destroyerAction, const Action& doofAction)
+	void setPlayerActions(int playerId, const Action actions[3])
 	{
-		this->players[playerId]->reaper->action = &reaperAction;
-		this->players[playerId]->destroyer->action = &destroyerAction;
-		this->players[playerId]->doof->action = &doofAction;
+		this->players[playerId]->reaper->action = &actions[0];
+		this->players[playerId]->destroyer->action = &actions[1];
+		this->players[playerId]->doof->action = &actions[2];
 	}
 
 	// Get the next collision for the current round
@@ -914,9 +950,9 @@ public:
 		// Apply skill effects
 		for (auto it = this->skillEffects.begin(); it != this->skillEffects.end(); ++it)
 		{
-			it->apply(*this);
+			(*it)->apply(*this);
 		}
-
+		
 		// Apply thrust for tankers
 		for (auto it = this->tankers.begin(); it != this->tankers.end(); ++it)
 		{
@@ -1104,7 +1140,7 @@ void DestroyerSkillEffect::apply(Unit* unit)
 	unit->thrust(*this, -DESTROYER_NITRO_GRENADE_POWER);
 }
 
-bool Wreck::harvest(Player* players[PLAYERS_COUNT], const vector<SkillEffect>& skillEffects)
+bool Wreck::harvest(Player* players[PLAYERS_COUNT], const vector<SkillEffect *>& skillEffects)
 {
 	for (int i = 0; i < PLAYERS_COUNT; ++i)
 	{
@@ -1278,8 +1314,18 @@ void readInputs(Board& board, istream& stream)
 		case WRECK_UNITID:
 			board.wrecks.push_back(Wreck(unitId, x, y, extra, radius));
 			break;
+		case REAPER_SKILL_EFFECT:
+			board.skillEffects.push_back(new ReaperSkillEffect(unitId, x, y, extra));
+			break;
+		case DOOF_SKILL_EFFECT:
+			board.skillEffects.push_back(new DoofSkillEffect(unitId, x, y, extra));
+			break;
+		case DESTROYER_SKILL_EFFECT:
+			board.skillEffects.push_back(new DestroyerSkillEffect(unitId, x, y, extra));
+			break;
 		default:
-			throw string("Unit Type not handled");
+			cerr << "Unknown Unit Type " << unitType << endl;
+			break;			
 		}
 	}
 
@@ -1350,22 +1396,80 @@ void strategy1(const Board& board)
 	cout << bestEnnemy->reaper->x << " " << bestEnnemy->reaper->y << " " << MAX_THRUST << endl;
 }
 
+int computeScore(const Board& board)
+{
+	return 0;
+}
+
+Action generateRandomAction()
+{
+	Action action;
+	action.type = rand() % 3;
+	if (action.type > WAIT_ACTION)
+	{
+		action.x = (rand() % (2 * MAP_RADIUS) + 1) - MAP_RADIUS;
+		action.y = (rand() % (2 * MAP_RADIUS) + 1) - MAP_RADIUS;
+	}
+
+	if (action.type == MOVE_ACTION)
+	{
+		action.throttel = rand() % (MAX_THRUST + 1);
+	}
+
+	return action;
+}
+
 void strategy2(const Board& board)
 {
 	// Monte Carlo Depth 1
 	Board simulationBoard;
+	int bestScore = -1000;
+	Action bestActions[3];
+
 	for (int i = 0; i < SIMULATIONS_NUMBER; ++i)
 	{
 		// Copy board to simulate
 		simulationBoard = board;
 
 		// Generate actions
+		Action actions[3];
+		for (int j = 0; j < 3; ++j)
+		{
+			actions[j] = generateRandomAction();
+		}
 
+		// Play them
+		simulationBoard.setPlayerActions(0, actions);
+		simulationBoard.setPlayerActions(1, actions);
+		simulationBoard.setPlayerActions(2, actions);
+		simulationBoard.updateGame();
+
+		// Evaluate score
+		int score = computeScore(simulationBoard);
+		
+		if (score > bestScore)
+		{
+			// New is better
+			bestScore = score;
+			for (int j = 0; j < 3; ++j)
+			{
+				bestActions[j] = actions[j];
+			}			
+		}
+	}
+
+	// Print best
+	for (int i = 0; i < 3; ++i)
+	{
+		bestActions[i].print();
 	}
 }
 
 int main()
 {
+	// Rand init
+	srand(time(NULL));
+
 	// Init board
 	Board board;
 	for (int i = 0; i < PLAYERS_COUNT; ++i)
@@ -1379,6 +1483,10 @@ int main()
 		readInputs(board, cin);
 
 		// Decide action
-		strategy1(board);
+		auto start = std::chrono::high_resolution_clock::now();
+		strategy2(board);
+		auto end = std::chrono::high_resolution_clock::now();
+		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+		cerr << "Strategy tooked " << elapsed.count() << " milliseconds." << endl;
 	}
 }
