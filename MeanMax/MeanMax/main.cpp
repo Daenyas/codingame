@@ -627,6 +627,14 @@ public:
 			this->thrust(Point(this->action->x, this->action->y), this->action->throttel);
 		}
 	}
+
+	void skillAction(vector<SkillEffect *>& effects)
+	{
+		if (this->action->type == SKILL_ACTION)
+		{
+			effects.push_back(this->skill(Point(this->action->x, this->action->y)));
+		}
+	}
 };
 
 class Reaper : public Looter
@@ -698,6 +706,11 @@ public:
 	virtual SkillEffect* skill(const Point& point)
 	{
 		return new DoofSkillEffect(0, point.x, point.y, DOOF_SKILL_DURATION);
+	}
+
+	int sing() 
+	{
+		return (int)floor(this->speed() * DOOF_RAGE_COEF);
 	}
 };
 
@@ -856,6 +869,11 @@ public:
 
 		this->linkUnits();
 
+		for (auto it = this->skillEffects.begin(); it != this->skillEffects.end(); ++it)
+		{
+			delete *it;
+		}
+		this->skillEffects.clear();
 		// TODO : copy skill effects
 
 		return *this;
@@ -947,6 +965,14 @@ public:
 
 	void updateGame()
 	{
+		// TODO : Create skill effects
+		for (int i = 0; i < PLAYERS_COUNT; ++i)
+		{
+			this->players[i]->reaper->skillAction(this->skillEffects);
+			this->players[i]->destroyer->skillAction(this->skillEffects);
+			this->players[i]->doof->skillAction(this->skillEffects);
+		}
+
 		// Apply skill effects
 		for (auto it = this->skillEffects.begin(); it != this->skillEffects.end(); ++it)
 		{
@@ -1050,6 +1076,34 @@ public:
 
 		// Round values and apply friction
 		this->adjust();
+
+		// Generate rage
+		for (int i = 0; i < PLAYERS_COUNT; ++i)
+		{
+			this->players[i]->rage = min(MAX_RAGE, this->players[i]->rage + this->players[i]->doof->sing());
+		}
+
+		// Restore masses
+		for (auto it = this->units.begin(); it != this->units.end(); ++it)
+		{
+			while ((*it)->mass >= REAPER_SKILL_MASS_BONUS) 
+			{
+				(*it)->mass -= REAPER_SKILL_MASS_BONUS;
+			}
+		}
+
+		// Remove dead skill effects
+		for (auto it = this->skillEffects.begin(); it != this->skillEffects.end();)
+		{
+			if ((*it)->duration <= 0)
+			{
+				// Remove from skillEffects
+				it = this->skillEffects.erase(it);
+				continue;
+			}
+
+			++it;
+		}
 	}
 	
 	void adjust()
@@ -1330,6 +1384,12 @@ void readInputs(Board& board, istream& stream)
 	}
 
 	board.linkUnits();
+
+	for (auto it = board.skillEffects.begin(); it != board.skillEffects.end(); ++it)
+	{
+		delete *it;
+	}
+	board.skillEffects.clear();
 }
 
 void strategy1(const Board& board)
