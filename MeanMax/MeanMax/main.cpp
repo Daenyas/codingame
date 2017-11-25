@@ -1,14 +1,14 @@
 #include <iostream>
 #include <string>
-#include <vector>
 #include <algorithm>
+#include <limits>
 #include <math.h>
 #include <time.h>
 #include <chrono>
 #include <cstring>
 
 // Compiler optimizations on CG
-//#pragma GCC optimize "O3,omit-frame-pointer,inline,unsafe-math-optimizations,fast-math"
+#pragma GCC optimize "O3,omit-frame-pointer,inline,unsafe-math-optimizations,fast-math"
 
 using namespace std;
 
@@ -77,6 +77,7 @@ using namespace std;
 #define REAPER_SKILL_EFFECT 5
 #define DOOF_SKILL_EFFECT 6
 #define DESTROYER_SKILL_EFFECT 7
+#define SKILLS_MAX 50
 
 #define NULL_COLLISION Collision(1.0 + EPSILON)
 #define IMPULSE_COEFF 0.5
@@ -90,10 +91,6 @@ using namespace std;
 #define WAIT_ACTION 0
 #define MOVE_ACTION 1
 #define SKILL_ACTION 2
-
-// Simulations
-#define SIMULATIONS_NUMBER 1
-
 
 /* Utils */
 template <typename T, int Size>
@@ -140,7 +137,6 @@ public:
 		if (index < this->currentSize - 1)
 		{
 			this->items[index] = this->items[currentSize - 1];
-			//memmove(&this->items[index], &this->items[index + 1], sizeof(T) * (this->currentSize - index + 1));
 		}
 		--this->currentSize;
 	}
@@ -178,24 +174,78 @@ public:
 	int y;
 	int throttel;
 
-	void print()
+	Action()
+	{
+	}
+
+	Action(const Action& other) : type(other.type), x(other.x), y(other.y), throttel(other.throttel)
+	{
+	}
+
+	Action& operator=(const Action& other)
+	{
+		this->type = other.type;
+		this->x = other.x;
+		this->y = other.y;
+		this->throttel = other.throttel;
+
+		return *this;
+	}
+
+	void print(string message)
 	{
 		switch (this->type)
 		{
 			case WAIT_ACTION:
-				cout << "WAIT" << endl;
+				cout << "WAIT";
 				break;
 			case MOVE_ACTION:
-				cout << this->x << " " << this->y << " " << this->throttel << endl;
+				cout << this->x << " " << this->y << " " << this->throttel;
 				break;
 			case SKILL_ACTION:
-				cout << "SKILL " << this->x << " " << this->y << endl;
+				cout << "SKILL " << this->x << " " << this->y;
 				break;
 			default:
-				cout << "WAIT" << endl;
+				cout << "WAIT";
 				cerr << "Unknown Action Type " << this->type << endl;
 				break;
 		}
+
+		if (message != "")
+		{
+			cout << " " << message;
+		}
+
+		cout << endl;
+	}
+};
+
+/* Generation class */
+class Gene
+{
+public:
+	Action actions[3];
+
+	Gene()
+	{
+	}
+
+	Gene(const Gene& other)
+	{
+		for (int i = 0; i < 3; ++i)
+		{
+			this->actions[i] = other.actions[i];
+		}
+	}
+
+	Gene& operator=(const Gene& other)
+	{
+		for (int i = 0; i < 3; ++i)
+		{
+			this->actions[i] = other.actions[i];
+		}
+
+		return *this;
 	}
 };
 
@@ -304,6 +354,10 @@ public:
 	int order;
 
 protected:
+	SkillEffect() : Point()
+	{
+	}
+
 	SkillEffect(int id, double x, double y, int type, double radius, int duration, int order) : Point(x, y), id(id), type(type), radius(radius), duration(duration), order(order)
 	{
 	}
@@ -326,7 +380,7 @@ protected:
 	}
 
 public:
-	void apply(Board& board);
+	void applyOnBoard(Board& board);
 
 protected:
 	virtual void apply(Unit* unit) = 0;
@@ -335,6 +389,10 @@ protected:
 class ReaperSkillEffect : public SkillEffect
 {
 public:	
+	ReaperSkillEffect() : SkillEffect()
+	{
+	}
+
 	ReaperSkillEffect(int id, double x, double y, int duration) : SkillEffect(id, x, y, REAPER_SKILL_EFFECT, REAPER_SKILL_RADIUS, duration, REAPER_SKILL_ORDER)
 	{
 	}
@@ -357,6 +415,10 @@ protected:
 class DoofSkillEffect : public SkillEffect
 {
 public:
+	DoofSkillEffect() : SkillEffect()
+	{
+	}
+
 	DoofSkillEffect(int id, double x, double y, int duration) : SkillEffect(id, x, y, DOOF_SKILL_EFFECT, DOOF_SKILL_RADIUS, duration, DOOF_SKILL_ORDER)
 	{
 	}
@@ -382,6 +444,10 @@ protected:
 class DestroyerSkillEffect : public SkillEffect
 {
 public:
+	DestroyerSkillEffect() : SkillEffect()
+	{
+	}
+
 	DestroyerSkillEffect(int id, double x, double y, int duration) : SkillEffect(id, x, y, DESTROYER_SKILL_EFFECT, DESTROYER_SKILL_RADIUS, duration, DESTROYER_SKILL_ORDER)
 	{
 	}
@@ -432,7 +498,7 @@ public:
 	}
 
 	// Reaper harvesting
-	bool harvest(Player players[PLAYERS_COUNT], const vector<SkillEffect* >& skillEffects);
+	bool harvest(Player players[PLAYERS_COUNT], const Pool<DoofSkillEffect, SKILLS_MAX>& doofSkillEffects);
 };
 
 class Unit : public Point
@@ -506,11 +572,11 @@ public:
 		this->vy += (direction.y - this->y) * coef;
 	}
 
-	bool isInDoofSkill(const vector<SkillEffect *>& skillEffects) const
+	bool isInDoofSkill(const Pool<DoofSkillEffect, SKILLS_MAX>& doofSkillEffects) const
 	{
-		for (auto it = skillEffects.begin(); it != skillEffects.end(); ++it)
+		for (int i = 0; i < doofSkillEffects.currentSize; ++i)
 		{
-			if ((*it)->type == DOOF_SKILL_EFFECT && this->isInRange(**it, (*it)->radius + this->radius))
+			if (this->isInRange(doofSkillEffects[i], doofSkillEffects[i].radius + this->radius))
 			{
 				return true;
 			}
@@ -519,12 +585,12 @@ public:
 		return false;
 	}
 
-	void adjust(const vector<SkillEffect *>& skillEffects) 
+	void adjust(const Pool<DoofSkillEffect, SKILLS_MAX>& doofSkillEffects)
 	{
 		this->x = round(this->x);
 		this->y = round(this->y);
 		
-		if (this->isInDoofSkill(skillEffects)) 
+		if (this->isInDoofSkill(doofSkillEffects))
 		{
 			// No friction if we are in a doof skill effect
 			this->vx = round(this->vx);
@@ -582,7 +648,6 @@ public:
 	// Bounce between 2 units
 	void bounce(Unit* u) 
 	{
-		cerr << "Bounce " << this->id << " and " << u->id << endl;
 		double mcoeff = (this->mass + u->mass) / (this->mass * u->mass);
 		double nx = this->x - u->x;
 		double ny = this->y - u->y;
@@ -741,21 +806,11 @@ protected:
 	}
 
 public:	
-	virtual SkillEffect* skill(const Point& point) = 0;
-
 	void moveAction()
 	{
 		if (this->action->type == MOVE_ACTION)
 		{
 			this->thrust(Point(this->action->x, this->action->y), this->action->throttel);
-		}
-	}
-
-	void skillAction(vector<SkillEffect *>& effects)
-	{
-		if (this->action->type == SKILL_ACTION)
-		{
-			effects.push_back(this->skill(Point(this->action->x, this->action->y)));
 		}
 	}
 };
@@ -782,9 +837,12 @@ public:
 		return *this;
 	}
 
-	virtual SkillEffect* skill(const Point& point)
+	void skill(Pool<ReaperSkillEffect, SKILLS_MAX>& pool)
 	{
-		return new ReaperSkillEffect(0, point.x, point.y, REAPER_SKILL_DURATION);
+		if (this->action->type == SKILL_ACTION)
+		{
+			pool.add(ReaperSkillEffect(0, this->action->x, this->action->y, REAPER_SKILL_DURATION));
+		}			
 	}
 };
 
@@ -810,9 +868,12 @@ public:
 		return *this;
 	}
 
-	virtual SkillEffect* skill(const Point& point)
+	void skill(Pool<DestroyerSkillEffect, SKILLS_MAX>& pool)
 	{
-		return new DestroyerSkillEffect(0, point.x, point.y, DESTROYER_SKILL_DURATION);
+		if (this->action->type == SKILL_ACTION)
+		{
+			pool.add(DestroyerSkillEffect(0, this->action->x, this->action->y, DESTROYER_SKILL_DURATION));
+		}
 	}
 };
 
@@ -838,9 +899,12 @@ public:
 		return *this;
 	}
 
-	virtual SkillEffect* skill(const Point& point)
+	void skill(Pool<DoofSkillEffect, SKILLS_MAX>& pool)
 	{
-		return new DoofSkillEffect(0, point.x, point.y, DOOF_SKILL_DURATION);
+		if (this->action->type == SKILL_ACTION)
+		{
+			pool.add(DoofSkillEffect(0, this->action->x, this->action->y, DOOF_SKILL_DURATION));
+		}
 	}
 
 	int sing() 
@@ -893,16 +957,29 @@ public:
 	Unit* a;
 	Unit* b;
 
-	Collision(double t) : t(t)
+	Collision(double t) : t(t), a(nullptr), b(nullptr)
 	{
 	}
 
-	Collision(double t, Unit* a) : t(t), a(a)
+	Collision(double t, Unit* a) : t(t), a(a), b(nullptr)
 	{
 	}
 
 	Collision(double t, Unit* a, Unit* b) : t(t), a(a), b(b)
 	{
+	}
+
+	Collision(const Collision& other) : t(other.t), a(other.a), b(other.b)
+	{
+	}
+
+	Collision& operator=(const Collision& other)
+	{
+		this->t = other.t;
+		this->a = other.a;
+		this->b = other.b;
+
+		return *this;
 	}
 
 	Tanker* dead() const
@@ -936,16 +1013,21 @@ class Board
 {
 public:
 	Player players[PLAYERS_COUNT];
+	
 	Pool<Tanker, TANKERS_BY_PLAYER_MAX * PLAYERS_COUNT> tankers;
 	Pool<Wreck, WRECKS_MAX> wrecks;
 	Pool<Unit*, 3 * PLAYERS_COUNT + TANKERS_BY_PLAYER_MAX * PLAYERS_COUNT> aliveUnits; // Reference already created units
-	vector<SkillEffect*> skillEffects; // Need pointers because SkillEffect is abstract
+
+	Pool<ReaperSkillEffect, SKILLS_MAX> reaperSkillEffects;
+	Pool<DestroyerSkillEffect, SKILLS_MAX> destroyerSkillEffects;
+	Pool<DoofSkillEffect, SKILLS_MAX> doofSkillEffects;
 
 	Board()
 	{
 	}
 
-	Board(const Board& other) : tankers(other.tankers), wrecks(other.wrecks)
+	Board(const Board& other) : tankers(other.tankers), wrecks(other.wrecks), 
+		reaperSkillEffects(other.reaperSkillEffects), destroyerSkillEffects(other.destroyerSkillEffects), doofSkillEffects(other.doofSkillEffects)
 	{
 		for (int i = 0; i < PLAYERS_COUNT; ++i)
 		{			
@@ -953,8 +1035,6 @@ public:
 		}
 
 		this->linkUnits();
-
-		// TODO : copy skill effects
 	}
 
 	Board& operator=(const Board& other)
@@ -968,24 +1048,13 @@ public:
 		this->wrecks = other.wrecks;
 
 		this->linkUnits();
-
-		for (auto it = this->skillEffects.begin(); it != this->skillEffects.end(); ++it)
-		{
-			delete *it;
-		}
-		this->skillEffects.clear();
-		// TODO : copy skill effects
+		
+		this->reaperSkillEffects = other.reaperSkillEffects;
+		this->destroyerSkillEffects = other.destroyerSkillEffects;
+		this->doofSkillEffects = other.doofSkillEffects;
 
 		return *this;
-	}
-
-	~Board()
-	{		
-		for (auto it = this->skillEffects.begin(); it != this->skillEffects.end(); ++it)
-		{
-			delete *it;			
-		}
-	}
+	}	
 
 	void resetUnits()
 	{
@@ -1010,11 +1079,11 @@ public:
 		}
 	}
 
-	void setPlayerActions(int playerId, const Action actions[3])
+	void setPlayerActions(int playerId, const Gene& gene)
 	{
-		this->players[playerId].reaper.action = &actions[0];
-		this->players[playerId].destroyer.action = &actions[1];
-		this->players[playerId].doof.action = &actions[2];
+		this->players[playerId].reaper.action = &gene.actions[0];
+		this->players[playerId].destroyer.action = &gene.actions[1];
+		this->players[playerId].doof.action = &gene.actions[2];
 	}
 
 	// Get the next collision for the current round
@@ -1053,16 +1122,21 @@ public:
 		// TODO : Create skill effects
 		for (int i = 0; i < PLAYERS_COUNT; ++i)
 		{
-			this->players[i].reaper.skillAction(this->skillEffects);
-			this->players[i].destroyer.skillAction(this->skillEffects);
-			this->players[i].doof.skillAction(this->skillEffects);
+			this->players[i].reaper.skill(this->reaperSkillEffects);
+			this->players[i].destroyer.skill(this->destroyerSkillEffects);
+			this->players[i].doof.skill(this->doofSkillEffects);
 		}
 
 		// Apply skill effects
-		for (auto it = this->skillEffects.begin(); it != this->skillEffects.end(); ++it)
+		for (int i = 0; i < this->reaperSkillEffects.currentSize; ++i)
 		{
-			(*it)->apply(*this);
+			this->reaperSkillEffects[i].applyOnBoard(*this);
 		}
+		for (int i = 0; i < this->destroyerSkillEffects.currentSize; ++i)
+		{
+			this->destroyerSkillEffects[i].applyOnBoard(*this);
+		}
+		// Doof skill does not change any property
 		
 		// Apply thrust for tankers
 		for (int i = 0 ; i < this->tankers.currentSize; ++i)
@@ -1085,7 +1159,7 @@ public:
 		Collision collision = getNextCollision();
 
 		while (collision.t + t <= 1.0)
-		{
+		{		
 			// move of delta time
 			for (int i = 0; i < this->aliveUnits.currentSize; ++i)
 			{
@@ -1095,7 +1169,7 @@ public:
 
 			this->playCollision(collision);
 
-			collision = getNextCollision();
+			collision = getNextCollision();			
 		}
 
 		// No more collision. Move units until the end of the round
@@ -1136,7 +1210,7 @@ public:
 		// Water collection for reapers
 		for (int i = 0; i < this->wrecks.currentSize; ++i)
 		{
-			bool alive = this->wrecks[i].harvest(this->players, this->skillEffects);
+			bool alive = this->wrecks[i].harvest(this->players, this->doofSkillEffects);
 			
 			if (!alive)
 			{
@@ -1166,16 +1240,25 @@ public:
 		}
 
 		// Remove dead skill effects
-		for (auto it = this->skillEffects.begin(); it != this->skillEffects.end();)
+		for (int i = 0; i < this->reaperSkillEffects.currentSize; ++i)
 		{
-			if ((*it)->duration <= 0)
+			if (this->reaperSkillEffects[i].duration <= 0)
 			{
-				// Remove from skillEffects
-				it = this->skillEffects.erase(it);
-				continue;
+				// Remove from reaperSkillEffects
+				this->reaperSkillEffects.remove(i);
+				--i;
 			}
-
-			++it;
+		}
+		// Destroyer skill effect always die
+		this->destroyerSkillEffects.clear();
+		for (int i = 0; i < this->doofSkillEffects.currentSize; ++i)
+		{
+			if (this->doofSkillEffects[i].duration <= 0)
+			{
+				// Remove from doofSkillEffects
+				this->doofSkillEffects.remove(i);
+				--i;
+			}
 		}
 
 		// Remove dead tankers
@@ -1192,7 +1275,7 @@ public:
 	{
 		for (int i = 0; i < this->aliveUnits.currentSize; ++i)
 		{
-			this->aliveUnits[i]->adjust(this->skillEffects);
+			this->aliveUnits[i]->adjust(this->doofSkillEffects);
 		}
 	}
 
@@ -1244,7 +1327,7 @@ public:
 };
 
 
-void SkillEffect::apply(Board& board)
+void SkillEffect::applyOnBoard(Board& board)
 {
 	this->duration -= 1;
 	for (int i = 0; i < board.aliveUnits.currentSize; ++i)
@@ -1268,12 +1351,12 @@ void DestroyerSkillEffect::apply(Unit* unit)
 	unit->thrust(*this, -DESTROYER_NITRO_GRENADE_POWER);
 }
 
-bool Wreck::harvest(Player players[PLAYERS_COUNT], const vector<SkillEffect *>& skillEffects)
+bool Wreck::harvest(Player players[PLAYERS_COUNT], const Pool<DoofSkillEffect, SKILLS_MAX>& doofSkillEffects)
 {
 	for (int i = 0; i < PLAYERS_COUNT; ++i)
 	{
 		auto reaper = &players[i].reaper;
-		if (this->isInRange(*reaper, radius) && !reaper->isInDoofSkill(skillEffects))
+		if (this->isInRange(*reaper, radius) && !reaper->isInDoofSkill(doofSkillEffects))
 		{
 			players[i].score += 1;
 			water -= 1;
@@ -1444,13 +1527,13 @@ void readInputs(Board& board, istream& stream)
 			board.wrecks.add(Wreck(unitId, x, y, extra, radius));
 			break;
 		case REAPER_SKILL_EFFECT:
-			board.skillEffects.push_back(new ReaperSkillEffect(unitId, x, y, extra));
+			board.reaperSkillEffects.add(ReaperSkillEffect(unitId, x, y, extra));
 			break;
 		case DOOF_SKILL_EFFECT:
-			board.skillEffects.push_back(new DoofSkillEffect(unitId, x, y, extra));
+			board.doofSkillEffects.add(DoofSkillEffect(unitId, x, y, extra));
 			break;
 		case DESTROYER_SKILL_EFFECT:
-			board.skillEffects.push_back(new DestroyerSkillEffect(unitId, x, y, extra));
+			board.destroyerSkillEffects.add(DestroyerSkillEffect(unitId, x, y, extra));
 			break;
 		default:
 			cerr << "Unknown Unit Type " << unitType << endl;
@@ -1459,12 +1542,6 @@ void readInputs(Board& board, istream& stream)
 	}
 
 	board.linkUnits();
-
-	for (auto it = board.skillEffects.begin(); it != board.skillEffects.end(); ++it)
-	{
-		delete *it;
-	}
-	board.skillEffects.clear();
 }
 
 void strategy1(const Board& board)
@@ -1531,15 +1608,46 @@ void strategy1(const Board& board)
 	cout << bestEnnemy->reaper.x << " " << bestEnnemy->reaper.y << " " << MAX_THRUST << endl;
 }
 
-int computeScore(const Board& board)
+int eval(const Board& board)
 {
-	return 0;
+	auto myReaper = &board.players[0].reaper;
+	auto myDestroyer = &board.players[0].destroyer;
+	auto myDoof = &board.players[0].doof;
+
+	const Player* bestEnnemy = board.players[1].score > board.players[2].score ? &board.players[1] : &board.players[2];
+
+	const Wreck* reaperClosest = nullptr;
+	double minDistanceReaper = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
+	for (int i = 0; i < board.wrecks.currentSize; ++i)
+	{
+		double distance2 = myReaper->distance2(board.wrecks[i]);
+		if (distance2 < minDistanceReaper)
+		{
+			reaperClosest = &board.wrecks.getReference(i);
+			minDistanceReaper = distance2;
+		}
+	}
+
+	const Tanker* destroyerClosest = nullptr;
+	double minDistanceDestroyer = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
+	for (int i = 0; i < board.tankers.currentSize; ++i)
+	{
+		double distance2 = myDestroyer->distance2(board.tankers[i]);
+		if (distance2 < minDistanceDestroyer)
+		{
+			destroyerClosest = &board.tankers.getReference(i);
+			minDistanceDestroyer = distance2;
+		}
+	}
+
+	return board.players[0].score - bestEnnemy->score - minDistanceReaper - minDistanceDestroyer;
 }
 
 Action generateRandomAction()
 {
 	Action action;
-	action.type = rand() % 3;
+	//action.type = rand() % 3;
+	action.type = MOVE_ACTION;
 	if (action.type > WAIT_ACTION)
 	{
 		action.x = (rand() % (2 * MAP_RADIUS) + 1) - MAP_RADIUS;
@@ -1554,50 +1662,148 @@ Action generateRandomAction()
 	return action;
 }
 
+Gene generateDummyAction(const Board& board, int playerId)
+{
+	Gene result;
+
+	// My units
+	auto myReaper = &board.players[playerId].reaper;
+	auto myDestroyer = &board.players[playerId].destroyer;
+	auto myDoof = &board.players[playerId].doof;
+
+	// Go to closest Wreck
+	const Wreck* reaperTarget = nullptr;
+	double minDistance2Reaper = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
+	for (int i = 0; i < board.wrecks.currentSize; ++i)
+	{
+		double distance2 = myReaper->distance2(board.wrecks[i]);
+		if (distance2 < minDistance2Reaper)
+		{
+			reaperTarget = &board.wrecks.getReference(i);
+			minDistance2Reaper = distance2;
+		}
+	}
+
+	// Go to closest Tanker
+	const Tanker* destroyerTarget = nullptr;
+	double minDistance2Destroyer = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
+	for (int i = 0; i < board.tankers.currentSize; ++i)
+	{
+		double distance2 = myDestroyer->distance2(board.tankers[i]);
+		if (distance2 < minDistance2Destroyer)
+		{
+			destroyerTarget = &board.tankers.getReference(i);
+			minDistance2Destroyer = distance2;
+		}
+	}
+
+	// Go to strongest ennemy reaper
+	const Player* bestEnnemy = board.players[(playerId + 1) % 3].score > board.players[(playerId + 2) % 3].score ? &board.players[(playerId + 1) % 3] : &board.players[(playerId + 2) % 3];
+
+	// Output Reaper
+	if (!reaperTarget) // Anticipate and follow destroyer
+	{
+		result.actions[0].type = MOVE_ACTION;
+		result.actions[0].x = destroyerTarget->x;
+		result.actions[0].y = destroyerTarget->y;
+		result.actions[0].throttel = MAX_THRUST;
+	}
+	else if (myReaper->isInRange(*reaperTarget, reaperTarget->radius)) // Stay in
+	{
+		result.actions[0].type = WAIT_ACTION;
+	}
+	else // GO GO GO
+	{
+		result.actions[0].type = MOVE_ACTION;
+		result.actions[0].x = reaperTarget->x;
+		result.actions[0].y = reaperTarget->y;
+		result.actions[0].throttel = MAX_THRUST;
+	}
+
+	// Output Destroyer
+	if (destroyerTarget) // GO GO GO
+	{
+		result.actions[1].type = MOVE_ACTION;
+		result.actions[1].x = destroyerTarget->x;
+		result.actions[1].y = destroyerTarget->y;
+		result.actions[1].throttel = MAX_THRUST;
+	}
+	else // Should not happen
+	{
+		result.actions[1].type = WAIT_ACTION;
+	}
+
+	// Output Doof		
+	result.actions[2].type = MOVE_ACTION;
+	result.actions[2].x = bestEnnemy->reaper.x;
+	result.actions[2].y = bestEnnemy->reaper.y;
+	result.actions[2].throttel = MAX_THRUST;
+
+	return result;
+}
+
 void strategy2(const Board& board)
 {
+	static int minSimus = std::numeric_limits<int>::max();
+	static int maxSimus = 0;
 	// Monte Carlo Depth 1
 	Board simulationBoard;
-	int bestScore = -1000;
-	Action bestActions[3];
+	int bestScore = std::numeric_limits<int>::min();
+	Gene bestGene;
 
-	for (int i = 0; i < SIMULATIONS_NUMBER; ++i)
+	int simulationsCount = 0;
+	auto start = std::chrono::high_resolution_clock::now();
+	auto end = std::chrono::high_resolution_clock::now();
+	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+	while(elapsed.count() < 45)
 	{
 		// Copy board to simulate
 		simulationBoard = board;
 
 		// Generate actions
-		Action actions[3];
+		Gene gene;
 		for (int j = 0; j < 3; ++j)
 		{
-			actions[j] = generateRandomAction();
+			gene.actions[j] = generateRandomAction();
 		}
 
 		// Play them
-		simulationBoard.setPlayerActions(0, actions);
-		simulationBoard.setPlayerActions(1, actions);
-		simulationBoard.setPlayerActions(2, actions);
+		simulationBoard.setPlayerActions(0, gene);
+		simulationBoard.setPlayerActions(1, generateDummyAction(simulationBoard, 1));
+		simulationBoard.setPlayerActions(2, generateDummyAction(simulationBoard, 2));
 		simulationBoard.updateGame();
 
 		// Evaluate score
-		int score = computeScore(simulationBoard);
+		int score = eval(simulationBoard);
 		
 		if (score > bestScore)
 		{
 			// New is better
 			bestScore = score;
-			for (int j = 0; j < 3; ++j)
-			{
-				bestActions[j] = actions[j];
-			}			
+			bestGene = gene;
 		}
+
+		++simulationsCount;
+		end = std::chrono::high_resolution_clock::now();
+		elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+	}
+	
+	if (simulationsCount < minSimus)
+	{
+		minSimus = simulationsCount;
+	}
+	if (simulationsCount > maxSimus)
+	{
+		maxSimus = simulationsCount;
 	}
 
+	//cerr << "Min : "<< minSimus << endl;
+	//cerr << "Max : " << maxSimus << endl;
+
 	// Print best
-	for (int i = 0; i < 3; ++i)
-	{
-		bestActions[i].print();
-	}
+	bestGene.actions[0].print(to_string(simulationsCount) + " simus");
+	bestGene.actions[1].print("");
+	bestGene.actions[2].print("");
 }
 
 int main()
