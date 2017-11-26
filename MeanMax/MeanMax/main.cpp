@@ -13,8 +13,8 @@
 using namespace std;
 
 /**
-* League : Bronze
-* Rank : Top 10
+* League : Silver
+* Rank : 178
 **/
 
 /* Constants */
@@ -1128,11 +1128,12 @@ public:
 		double t = 0.0;
 
 		// Play the round. Stop at each collisions and play it. Reapeat until t > 1.0
-
+		int collisionsCount = 0;
 		Collision collision = getNextCollision();
-
+		
 		while (collision.t + t <= 1.0)
 		{		
+			++collisionsCount;			
 			// move of delta time
 			for (int i = 0; i < this->aliveUnits.currentSize; ++i)
 			{
@@ -1141,6 +1142,12 @@ public:
 			t += collision.t;
 
 			this->playCollision(collision);
+
+			// Just in case we got too much collisions, prevent timeouts
+			if (collisionsCount > 100)
+			{
+				break;
+			}
 
 			collision = getNextCollision();			
 		}
@@ -1656,11 +1663,11 @@ int eval(const Board& simulatedBoard, const Board& previousBoard)
 	}
 
 	return 
-		//(simulatedBoard.players[0].score - previousBoard.players[0].score) * 1000000
+		(simulatedBoard.players[0].score - previousBoard.players[0].score) * 1000000
 		+ (simulatedBoard.players[0].score - bestEnnemy->score) * 1000000
 		//- sumDistancesToWrecks / 100
-		- (reaperClosest ? minDistanceReaper : 0)
-		//- (destroyerClosest ? minDistanceDestroyer : 0)
+		- (reaperClosest ? minDistanceReaper : 0) / 1000
+		- (destroyerClosest ? minDistanceDestroyer : 0) / 1000
 		;
 }
 
@@ -1892,7 +1899,7 @@ Genome genetic(const Board& board, const Genome& playedGenome)
 	// Mutate and reevaluate till the end of clock
 	int index = 0;
 	int mutatedCount = 0;
-	while (elapsed.count() < 42)
+	while (elapsed.count() < 45)
 	{		
 		Genome mutated = population[index].mutate(board);
 
