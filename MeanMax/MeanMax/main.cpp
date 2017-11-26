@@ -14,7 +14,7 @@ using namespace std;
 
 /**
 * League : Bronze
-* Rank : 271
+* Rank : Top 10
 **/
 
 /* Constants */
@@ -91,6 +91,13 @@ using namespace std;
 #define WAIT_ACTION 0
 #define MOVE_ACTION 1
 #define SKILL_ACTION 2
+
+// Simulations
+#define SIMULATIONS_DEPTH 1
+#define GENES_NUMBER 4
+#define POPULATION_SIZE 5
+
+#define PI 3.14159265
 
 /* Utils */
 template <typename T, int Size>
@@ -192,7 +199,7 @@ public:
 		return *this;
 	}
 
-	void print(string message)
+	void print(string message) const
 	{
 		switch (this->type)
 		{
@@ -220,41 +227,12 @@ public:
 	}
 };
 
-/* Generation class */
-class Gene
-{
-public:
-	Action actions[3];
-
-	Gene()
-	{
-	}
-
-	Gene(const Gene& other)
-	{
-		for (int i = 0; i < 3; ++i)
-		{
-			this->actions[i] = other.actions[i];
-		}
-	}
-
-	Gene& operator=(const Gene& other)
-	{
-		for (int i = 0; i < 3; ++i)
-		{
-			this->actions[i] = other.actions[i];
-		}
-
-		return *this;
-	}
-};
-
-
 /* Board classes */
 class Board;
 class Unit;
 class Player;
 class Collision;
+class Gene;
 
 class Point
 {
@@ -498,7 +476,7 @@ public:
 	}
 
 	// Reaper harvesting
-	bool harvest(Player players[PLAYERS_COUNT], const Pool<DoofSkillEffect, SKILLS_MAX>& doofSkillEffects);
+	bool harvest(Player players[PLAYERS_COUNT], const Pool<DoofSkillEffect, SKILLS_MAX>& doofSkillEffects, int turn);
 };
 
 class Unit : public Point
@@ -917,7 +895,7 @@ class Player
 {
 public:
 	int index;
-	int score;
+	double score;
 	int rage;
 
 	Reaper reaper;
@@ -1079,12 +1057,7 @@ public:
 		}
 	}
 
-	void setPlayerActions(int playerId, const Gene& gene)
-	{
-		this->players[playerId].reaper.action = &gene.actions[0];
-		this->players[playerId].destroyer.action = &gene.actions[1];
-		this->players[playerId].doof.action = &gene.actions[2];
-	}
+	void setPlayerActions(int playerId, const Gene& gene);
 
 	// Get the next collision for the current round
 	// All units are tested
@@ -1117,9 +1090,9 @@ public:
 	}
 
 
-	void updateGame()
+	void updateGame(int turn)
 	{
-		// TODO : Create skill effects
+		// Create skill effects
 		for (int i = 0; i < PLAYERS_COUNT; ++i)
 		{
 			this->players[i].reaper.skill(this->reaperSkillEffects);
@@ -1210,7 +1183,7 @@ public:
 		// Water collection for reapers
 		for (int i = 0; i < this->wrecks.currentSize; ++i)
 		{
-			bool alive = this->wrecks[i].harvest(this->players, this->doofSkillEffects);
+			bool alive = this->wrecks[i].harvest(this->players, this->doofSkillEffects, turn);
 			
 			if (!alive)
 			{
@@ -1324,7 +1297,98 @@ public:
 			this->aliveUnits[i]->debug();
 		}
 	}
+
+	Gene generateDummyAction(int playerId) const;
 };
+
+
+/* Generation class */
+class Gene
+{
+public:
+	Action actions[3];
+
+	Gene()
+	{
+	}
+
+	Gene(const Gene& other)
+	{
+		for (int i = 0; i < 3; ++i)
+		{
+			this->actions[i] = other.actions[i];
+		}
+	}
+
+	Gene& operator=(const Gene& other)
+	{
+		for (int i = 0; i < 3; ++i)
+		{
+			this->actions[i] = other.actions[i];
+		}
+
+		return *this;
+	}
+};
+
+class Genome
+{
+public:
+	Gene genes[GENES_NUMBER];
+
+	Genome()
+	{
+	}
+
+	Genome(const Genome& other)
+	{
+		for (int i = 0; i < GENES_NUMBER; ++i)
+		{
+			this->genes[i] = other.genes[i];
+		}
+	}
+
+	Genome& operator=(const Genome& other)
+	{
+		for (int i = 0; i < GENES_NUMBER; ++i)
+		{
+			this->genes[i] = other.genes[i];
+		}
+
+		return *this;
+	}
+
+	Genome mutate(const Board& board);
+};
+
+Genome Genome::mutate(const Board& board)
+{
+	Genome mutated(*this);
+
+	int mutation = rand() % 800;
+	int gene = rand() % GENES_NUMBER;
+	int allele = rand() % 3;
+	if (mutation < 360)
+	{
+		// Change direction towards angle mutation		
+		double angleRad = mutation * PI / 180.0;
+		mutated.genes[gene].actions[allele].x += (10 * cos(angleRad));
+		mutated.genes[gene].actions[allele].y += (10 * sin(angleRad));
+	}
+	else if (mutation <= 760)
+	{
+		// Go Full speed more often
+		int speed = max(mutation - 360, MAX_THRUST);		
+		mutated.genes[gene].actions[allele].throttel = speed;
+	}	
+	else
+	{
+		// Try dummy action sometimes
+		mutated.genes[0] = board.generateDummyAction(0);
+	}
+
+	return mutated;
+}
 
 
 void SkillEffect::applyOnBoard(Board& board)
@@ -1351,14 +1415,14 @@ void DestroyerSkillEffect::apply(Unit* unit)
 	unit->thrust(*this, -DESTROYER_NITRO_GRENADE_POWER);
 }
 
-bool Wreck::harvest(Player players[PLAYERS_COUNT], const Pool<DoofSkillEffect, SKILLS_MAX>& doofSkillEffects)
+bool Wreck::harvest(Player players[PLAYERS_COUNT], const Pool<DoofSkillEffect, SKILLS_MAX>& doofSkillEffects, int turn)
 {
 	for (int i = 0; i < PLAYERS_COUNT; ++i)
 	{
 		auto reaper = &players[i].reaper;
 		if (this->isInRange(*reaper, radius) && !reaper->isInDoofSkill(doofSkillEffects))
 		{
-			players[i].score += 1;
+			players[i].score += (1 - turn * 0.2);
 			water -= 1;
 		}
 	}
@@ -1473,6 +1537,13 @@ Collision Tanker::getCollision()
 	return NULL_COLLISION;
 }
 
+void Board::setPlayerActions(int playerId, const Gene& gene)
+{
+	this->players[playerId].reaper.action = &gene.actions[0];
+	this->players[playerId].destroyer.action = &gene.actions[1];
+	this->players[playerId].doof.action = &gene.actions[2];
+}
+
 
 /* Game functions */
 void readInputs(Board& board, istream& stream)
@@ -1544,104 +1615,55 @@ void readInputs(Board& board, istream& stream)
 	board.linkUnits();
 }
 
-void strategy1(const Board& board)
+int eval(const Board& simulatedBoard, const Board& previousBoard)
 {
-	// My units
-	auto myReaper = &board.players[0].reaper;
-	auto myDestroyer = &board.players[0].destroyer;
-	auto myDoof = &board.players[0].doof;
+	auto myReaper = &simulatedBoard.players[0].reaper;
+	auto myDestroyer = &simulatedBoard.players[0].destroyer;
+	auto myDoof = &simulatedBoard.players[0].doof;
 
-	// Go to closest Wreck
-	const Wreck* reaperTarget = nullptr;
-	double minDistance2Reaper = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
-	for (int i = 0 ; i < board.wrecks.currentSize; ++i)
-	{
-		double distance2 = myReaper->distance2(board.wrecks[i]);
-		if (distance2 < minDistance2Reaper)
-		{
-			reaperTarget = &board.wrecks.getReference(i);
-			minDistance2Reaper = distance2;
-		}
-	}
-
-	// Go to closest Tanker
-	const Tanker* destroyerTarget = nullptr;
-	double minDistance2Destroyer = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
-	for (int i = 0; i < board.tankers.currentSize; ++i)
-	{
-		double distance2 = myDestroyer->distance2(board.tankers[i]);
-		if (distance2 < minDistance2Destroyer)
-		{
-			destroyerTarget = &board.tankers.getReference(i);
-			minDistance2Destroyer = distance2;
-		}
-	}
-
-	// Go to strongest ennemy reaper
-	const Player* bestEnnemy = board.players[1].score > board.players[2].score ? &board.players[1] : &board.players[2];	
-
-	// Output Reaper
-	if (!reaperTarget) // Anticipate and follow destroyer
-	{
-		cout << destroyerTarget->x << " " << destroyerTarget->y << " " << MAX_THRUST << endl;
-	}
-	else if (myReaper->isInRange(*reaperTarget, reaperTarget->radius)) // Stay in
-	{
-		cout << "WAIT" << endl;
-	}
-	else // GO GO GO
-	{
-		cout << reaperTarget->x << " " << reaperTarget->y << " " << MAX_THRUST << endl;
-	}
-
-	// Output Destroyer
-	if (destroyerTarget) // GO GO GO
-	{
-		cout << destroyerTarget->x << " " << destroyerTarget->y << " " << MAX_THRUST << endl;
-	}
-	else // Should not happen
-	{
-		cout << "WAIT" << endl;
-	}
-
-	// Output Doof		
-	cout << bestEnnemy->reaper.x << " " << bestEnnemy->reaper.y << " " << MAX_THRUST << endl;
-}
-
-int eval(const Board& board)
-{
-	auto myReaper = &board.players[0].reaper;
-	auto myDestroyer = &board.players[0].destroyer;
-	auto myDoof = &board.players[0].doof;
-
-	const Player* bestEnnemy = board.players[1].score > board.players[2].score ? &board.players[1] : &board.players[2];
+	const Player* bestEnnemy = simulatedBoard.players[1].score > simulatedBoard.players[2].score ? &simulatedBoard.players[1] : &simulatedBoard.players[2];
 
 	const Wreck* reaperClosest = nullptr;
 	double minDistanceReaper = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
-	for (int i = 0; i < board.wrecks.currentSize; ++i)
+	double sumDistancesToWrecks = 0.0;
+	for (int i = 0; i < simulatedBoard.wrecks.currentSize; ++i)
 	{
-		double distance2 = myReaper->distance2(board.wrecks[i]);
+		double distance2 = myReaper->distance2(simulatedBoard.wrecks[i]);
 		if (distance2 < minDistanceReaper)
 		{
-			reaperClosest = &board.wrecks.getReference(i);
+			reaperClosest = &simulatedBoard.wrecks.getReference(i);
 			minDistanceReaper = distance2;
 		}
+		sumDistancesToWrecks += distance2;
 	}
 
 	const Tanker* destroyerClosest = nullptr;
+	int fullTankersCount = 0;
 	double minDistanceDestroyer = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
-	for (int i = 0; i < board.tankers.currentSize; ++i)
+	for (int i = 0; i < simulatedBoard.tankers.currentSize; ++i)
 	{
-		double distance2 = myDestroyer->distance2(board.tankers[i]);
+		double distance2 = myDestroyer->distance2(simulatedBoard.tankers[i]);
 		if (distance2 < minDistanceDestroyer)
 		{
-			destroyerClosest = &board.tankers.getReference(i);
+			destroyerClosest = &simulatedBoard.tankers.getReference(i);
 			minDistanceDestroyer = distance2;
+		}
+
+		if (simulatedBoard.tankers[i].isFull())
+		{
+			++fullTankersCount;
 		}
 	}
 
-	return board.players[0].score - bestEnnemy->score - minDistanceReaper - minDistanceDestroyer;
+	return 
+		//(simulatedBoard.players[0].score - previousBoard.players[0].score) * 1000000
+		+ (simulatedBoard.players[0].score - bestEnnemy->score) * 1000000
+		//- sumDistancesToWrecks / 100
+		- (reaperClosest ? minDistanceReaper : 0)
+		//- (destroyerClosest ? minDistanceDestroyer : 0)
+		;
 }
+
 
 Action generateRandomAction()
 {
@@ -1662,24 +1684,24 @@ Action generateRandomAction()
 	return action;
 }
 
-Gene generateDummyAction(const Board& board, int playerId)
+Gene Board::generateDummyAction(int playerId) const
 {
 	Gene result;
 
 	// My units
-	auto myReaper = &board.players[playerId].reaper;
-	auto myDestroyer = &board.players[playerId].destroyer;
-	auto myDoof = &board.players[playerId].doof;
+	auto myReaper = &this->players[playerId].reaper;
+	auto myDestroyer = &this->players[playerId].destroyer;
+	auto myDoof = &this->players[playerId].doof;
 
 	// Go to closest Wreck
 	const Wreck* reaperTarget = nullptr;
 	double minDistance2Reaper = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
-	for (int i = 0; i < board.wrecks.currentSize; ++i)
+	for (int i = 0; i < this->wrecks.currentSize; ++i)
 	{
-		double distance2 = myReaper->distance2(board.wrecks[i]);
+		double distance2 = myReaper->distance2(this->wrecks[i]);
 		if (distance2 < minDistance2Reaper)
 		{
-			reaperTarget = &board.wrecks.getReference(i);
+			reaperTarget = &this->wrecks.getReference(i);
 			minDistance2Reaper = distance2;
 		}
 	}
@@ -1687,18 +1709,18 @@ Gene generateDummyAction(const Board& board, int playerId)
 	// Go to closest Tanker
 	const Tanker* destroyerTarget = nullptr;
 	double minDistance2Destroyer = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
-	for (int i = 0; i < board.tankers.currentSize; ++i)
+	for (int i = 0; i < this->tankers.currentSize; ++i)
 	{
-		double distance2 = myDestroyer->distance2(board.tankers[i]);
+		double distance2 = myDestroyer->distance2(this->tankers[i]);
 		if (distance2 < minDistance2Destroyer)
 		{
-			destroyerTarget = &board.tankers.getReference(i);
+			destroyerTarget = &this->tankers.getReference(i);
 			minDistance2Destroyer = distance2;
 		}
 	}
 
 	// Go to strongest ennemy reaper
-	const Player* bestEnnemy = board.players[(playerId + 1) % 3].score > board.players[(playerId + 2) % 3].score ? &board.players[(playerId + 1) % 3] : &board.players[(playerId + 2) % 3];
+	const Player* bestEnnemy = this->players[(playerId + 1) % 3].score > this->players[(playerId + 2) % 3].score ? &this->players[(playerId + 1) % 3] : &this->players[(playerId + 2) % 3];
 
 	// Output Reaper
 	if (!reaperTarget) // Anticipate and follow destroyer
@@ -1742,50 +1764,56 @@ Gene generateDummyAction(const Board& board, int playerId)
 	return result;
 }
 
-void strategy2(const Board& board)
+void monteCarlo(const Board& board)
 {
-	static int minSimus = std::numeric_limits<int>::max();
+	static int minSimus = numeric_limits<int>::max();
 	static int maxSimus = 0;
 	// Monte Carlo Depth 1
 	Board simulationBoard;
-	int bestScore = std::numeric_limits<int>::min();
+	int bestScore = numeric_limits<int>::min();
 	Gene bestGene;
 
 	int simulationsCount = 0;
-	auto start = std::chrono::high_resolution_clock::now();
-	auto end = std::chrono::high_resolution_clock::now();
-	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+	auto start = chrono::high_resolution_clock::now();
+	auto end = chrono::high_resolution_clock::now();
+	auto elapsed = chrono::duration_cast<chrono::milliseconds>(end - start);
 	while(elapsed.count() < 45)
 	{
 		// Copy board to simulate
 		simulationBoard = board;
 
 		// Generate actions
-		Gene gene;
-		for (int j = 0; j < 3; ++j)
+		Gene gene[SIMULATIONS_DEPTH];
+		for (int i = 0; i < SIMULATIONS_DEPTH ; ++i)
 		{
-			gene.actions[j] = generateRandomAction();
+			for (int j = 0; j < 3; ++j)
+			{
+				gene[i].actions[j] = generateRandomAction();
+			}
 		}
 
 		// Play them
-		simulationBoard.setPlayerActions(0, gene);
-		simulationBoard.setPlayerActions(1, generateDummyAction(simulationBoard, 1));
-		simulationBoard.setPlayerActions(2, generateDummyAction(simulationBoard, 2));
-		simulationBoard.updateGame();
+		for (int i = 0; i < SIMULATIONS_DEPTH; ++i)
+		{
+			simulationBoard.setPlayerActions(0, gene[i]);
+			simulationBoard.setPlayerActions(1, simulationBoard.generateDummyAction(1));
+			simulationBoard.setPlayerActions(2, simulationBoard.generateDummyAction(2));
+			simulationBoard.updateGame(i);
+		}		
 
 		// Evaluate score
-		int score = eval(simulationBoard);
+		int score = eval(simulationBoard, board);
 		
 		if (score > bestScore)
 		{
 			// New is better
 			bestScore = score;
-			bestGene = gene;
+			bestGene = gene[0];
 		}
 
-		++simulationsCount;
-		end = std::chrono::high_resolution_clock::now();
-		elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+		simulationsCount += SIMULATIONS_DEPTH;
+		end = chrono::high_resolution_clock::now();
+		elapsed = chrono::duration_cast<chrono::milliseconds>(end - start);
 	}
 	
 	if (simulationsCount < minSimus)
@@ -1806,6 +1834,128 @@ void strategy2(const Board& board)
 	bestGene.actions[2].print("");
 }
 
+Genome genetic(const Board& board, const Genome& playedGenome)
+{	
+	Board simulationBoard;	
+
+	int simulationsCount = 0;
+	
+	auto start = chrono::high_resolution_clock::now();
+	auto end = chrono::high_resolution_clock::now();
+	auto elapsed = chrono::duration_cast<chrono::milliseconds>(end - start);
+
+	Genome population[POPULATION_SIZE];
+	// Generate first population : keep last played gene, because should be in way we wanted to play
+	for (int j = 1; j < GENES_NUMBER; ++j)
+	{
+		population[0].genes[j-1] = playedGenome.genes[j];
+	}
+	for (int k = 0; k < 3; ++k)
+	{
+		population[0].genes[GENES_NUMBER - 1].actions[k] = generateRandomAction();
+	}
+	for (int i = 1; i < POPULATION_SIZE; ++i)
+	{
+		for (int j = 0; j < GENES_NUMBER; ++j)
+		{
+			for (int k = 0; k < 3; ++k)
+			{
+				population[i].genes[j].actions[k] = generateRandomAction();
+			}
+		}
+	}
+
+	// Evaluate first generation
+	int scores[POPULATION_SIZE];
+	for (int i = 0; i < POPULATION_SIZE; ++i)
+	{
+		// Copy current board
+		simulationBoard = board;
+		
+		// Play actions
+		for (int j = 0; j < GENES_NUMBER; ++j)
+		{
+			simulationBoard.setPlayerActions(0, population[i].genes[j]);
+			simulationBoard.setPlayerActions(1, simulationBoard.generateDummyAction(1));
+			simulationBoard.setPlayerActions(2, simulationBoard.generateDummyAction(2));
+			simulationBoard.updateGame(j);
+		}
+
+		// Evaluate score
+		scores[i] = eval(simulationBoard, board);
+
+		simulationsCount += GENES_NUMBER;
+		end = chrono::high_resolution_clock::now();
+		elapsed = chrono::duration_cast<chrono::milliseconds>(end - start);
+	}	
+		
+	// Mutate and reevaluate till the end of clock
+	int index = 0;
+	int mutatedCount = 0;
+	while (elapsed.count() < 42)
+	{		
+		Genome mutated = population[index].mutate(board);
+
+		// Copy current board
+		simulationBoard = board;
+
+		// Play actions
+		for (int j = 0; j < GENES_NUMBER; ++j)
+		{
+			simulationBoard.setPlayerActions(0, mutated.genes[j]);
+			simulationBoard.setPlayerActions(1, simulationBoard.generateDummyAction(1));
+			simulationBoard.setPlayerActions(2, simulationBoard.generateDummyAction(2));
+			simulationBoard.updateGame(j);
+		}
+
+		// Evaluate score
+		int score = eval(simulationBoard, board);
+
+		// Replace lowest if greater
+		int lowestScore = numeric_limits<int>::max();
+		int lowestIndex = -1;
+		for (int i = 0; i < POPULATION_SIZE; ++i)
+		{
+			if (scores[i] < lowestScore)
+			{
+				lowestIndex = i;
+				lowestScore = scores[i];
+			}
+		}
+
+		if (score > lowestScore)
+		{
+			population[lowestIndex] = mutated;
+			scores[lowestIndex] = score;
+			++mutatedCount;
+		}
+		
+		// Mutate another item of the population
+		index = (index + 1) % POPULATION_SIZE;
+
+		simulationsCount += GENES_NUMBER;
+		end = chrono::high_resolution_clock::now();
+		elapsed = chrono::duration_cast<chrono::milliseconds>(end - start);
+	}
+
+	int bestScore = numeric_limits<int>::min();
+	const Genome* bestGenome = nullptr;
+	for (int i = 0; i < POPULATION_SIZE; ++i)
+	{
+		if (scores[i] > bestScore)
+		{			
+			bestGenome = &population[i];
+			bestScore = scores[i];
+		}
+	}
+
+	bestGenome->genes[0].actions[0].print(to_string(simulationsCount) + " simus");
+	bestGenome->genes[0].actions[1].print(to_string(mutatedCount) + " mutated");
+	bestGenome->genes[0].actions[2].print("Score : " + to_string(bestScore));
+
+	return *bestGenome;
+}
+
 int main()
 {
 	// Rand init
@@ -1818,6 +1968,15 @@ int main()
 		board.players[i] = Player(i, 0, 0);
 	}
 
+	Genome playedGenome;
+	for (int j = 0; j < GENES_NUMBER; ++j)
+	{
+		for (int k = 0; k < 3; ++k)
+		{
+			playedGenome.genes[j].actions[k] = generateRandomAction();
+		}
+	}
+
 	// Game loop
 	while (1)
 	{
@@ -1825,10 +1984,10 @@ int main()
 		readInputs(board, cin);
 
 		// Decide action
-		auto start = std::chrono::high_resolution_clock::now();
-		strategy2(board);
-		auto end = std::chrono::high_resolution_clock::now();
-		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+		auto start = chrono::high_resolution_clock::now();
+		playedGenome = genetic(board, playedGenome);
+		auto end = chrono::high_resolution_clock::now();
+		auto elapsed = chrono::duration_cast<chrono::milliseconds>(end - start);
 		cerr << "Strategy tooked " << elapsed.count() << " milliseconds." << endl;
 	}
 }
