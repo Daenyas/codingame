@@ -815,13 +815,7 @@ public:
 		return *this;
 	}
 
-	void skill(Pool<ReaperSkillEffect, SKILLS_MAX>& pool)
-	{
-		if (this->action->type == SKILL_ACTION)
-		{
-			pool.add(ReaperSkillEffect(0, this->action->x, this->action->y, REAPER_SKILL_DURATION));
-		}			
-	}
+	void skill(Pool<ReaperSkillEffect, SKILLS_MAX>& pool, Player& player);
 };
 
 class Destroyer : public Looter
@@ -846,13 +840,7 @@ public:
 		return *this;
 	}
 
-	void skill(Pool<DestroyerSkillEffect, SKILLS_MAX>& pool)
-	{
-		if (this->action->type == SKILL_ACTION)
-		{
-			pool.add(DestroyerSkillEffect(0, this->action->x, this->action->y, DESTROYER_SKILL_DURATION));
-		}
-	}
+	void skill(Pool<DestroyerSkillEffect, SKILLS_MAX>& pool, Player& player);
 };
 
 class Doof : public Looter
@@ -877,13 +865,7 @@ public:
 		return *this;
 	}
 
-	void skill(Pool<DoofSkillEffect, SKILLS_MAX>& pool)
-	{
-		if (this->action->type == SKILL_ACTION)
-		{
-			pool.add(DoofSkillEffect(0, this->action->x, this->action->y, DOOF_SKILL_DURATION));
-		}
-	}
+	void skill(Pool<DoofSkillEffect, SKILLS_MAX>& pool, Player& player);
 
 	int sing() 
 	{
@@ -1095,9 +1077,9 @@ public:
 		// Create skill effects
 		for (int i = 0; i < PLAYERS_COUNT; ++i)
 		{
-			this->players[i].reaper.skill(this->reaperSkillEffects);
-			this->players[i].destroyer.skill(this->destroyerSkillEffects);
-			this->players[i].doof.skill(this->doofSkillEffects);
+			this->players[i].reaper.skill(this->reaperSkillEffects, this->players[i]);
+			this->players[i].destroyer.skill(this->destroyerSkillEffects, this->players[i]);
+			this->players[i].doof.skill(this->doofSkillEffects, this->players[i]);
 		}
 
 		// Apply skill effects
@@ -1375,9 +1357,10 @@ Genome Genome::mutate(const Board& board)
 	int mutation = rand() % 800;
 	int gene = rand() % GENES_NUMBER;
 	int allele = rand() % 3;
+
 	if (mutation < 360)
 	{
-		// Change direction towards angle mutation		
+		// Change direction towards angle mutation
 		double angleRad = mutation * PI / 180.0;
 		mutated.genes[gene].actions[allele].x += (10 * cos(angleRad));
 		mutated.genes[gene].actions[allele].y += (10 * sin(angleRad));
@@ -1385,14 +1368,20 @@ Genome Genome::mutate(const Board& board)
 	else if (mutation <= 760)
 	{
 		// Go Full speed more often
-		int speed = max(mutation - 360, MAX_THRUST);		
+		int speed = max(mutation - 360, MAX_THRUST);
 		mutated.genes[gene].actions[allele].throttel = speed;
-	}	
-	else
+	}
+	//else if (mutation <= 900)
+	//{
+	//	// Swap between skill and move action
+	//	mutated.genes[gene].actions[allele].type = 3 - mutated.genes[gene].actions[allele].type;
+	//}
+	else 
 	{
 		// Try dummy action sometimes
 		mutated.genes[0] = board.generateDummyAction(0);
 	}
+	
 
 	return mutated;
 }
@@ -1420,6 +1409,33 @@ void DestroyerSkillEffect::apply(Unit* unit)
 {
 	// Push units back
 	unit->thrust(*this, -DESTROYER_NITRO_GRENADE_POWER);
+}
+
+void Reaper::skill(Pool<ReaperSkillEffect, SKILLS_MAX>& pool, Player& player)
+{
+	if (this->action->type == SKILL_ACTION && player.rage >= REAPER_SKILL_COST && this->distance(Point(this->action->x, this->action->y)) <= REAPER_SKILL_RANGE)
+	{
+		pool.add(ReaperSkillEffect(0, this->action->x, this->action->y, REAPER_SKILL_DURATION));
+		player.rage -= REAPER_SKILL_COST;
+	}
+}
+
+void Destroyer::skill(Pool<DestroyerSkillEffect, SKILLS_MAX>& pool, Player& player)
+{
+	if (this->action->type == SKILL_ACTION && player.rage >= DESTROYER_SKILL_COST && this->distance(Point(this->action->x, this->action->y)) <= DESTROYER_SKILL_RANGE)
+	{
+		pool.add(DestroyerSkillEffect(0, this->action->x, this->action->y, DESTROYER_SKILL_DURATION));
+		player.rage -= DESTROYER_SKILL_COST;
+	}
+}
+
+void Doof::skill(Pool<DoofSkillEffect, SKILLS_MAX>& pool, Player& player)
+{
+	if (this->action->type == SKILL_ACTION && player.rage >= DOOF_SKILL_COST && this->distance(Point(this->action->x, this->action->y)) <= DOOF_SKILL_RANGE)
+	{
+		pool.add(DoofSkillEffect(0, this->action->x, this->action->y, DOOF_SKILL_DURATION));
+		player.rage -= DOOF_SKILL_COST;
+	}
 }
 
 bool Wreck::harvest(Player players[PLAYERS_COUNT], const Pool<DoofSkillEffect, SKILLS_MAX>& doofSkillEffects, int turn)
@@ -1632,7 +1648,6 @@ int eval(const Board& simulatedBoard, const Board& previousBoard)
 
 	const Wreck* reaperClosest = nullptr;
 	double minDistanceReaper = (MAP_RADIUS * 2) * (MAP_RADIUS * 2);
-	double sumDistancesToWrecks = 0.0;
 	for (int i = 0; i < simulatedBoard.wrecks.currentSize; ++i)
 	{
 		double distance2 = myReaper->distance2(simulatedBoard.wrecks[i]);
@@ -1641,7 +1656,6 @@ int eval(const Board& simulatedBoard, const Board& previousBoard)
 			reaperClosest = &simulatedBoard.wrecks.getReference(i);
 			minDistanceReaper = distance2;
 		}
-		sumDistancesToWrecks += distance2;
 	}
 
 	const Tanker* destroyerClosest = nullptr;
@@ -1662,12 +1676,14 @@ int eval(const Board& simulatedBoard, const Board& previousBoard)
 		}
 	}
 
+	double distanceBestEnnemy = myDoof->distance2(bestEnnemy->reaper);
+
 	return 
 		(simulatedBoard.players[0].score - previousBoard.players[0].score) * 1000000
 		+ (simulatedBoard.players[0].score - bestEnnemy->score) * 1000000
-		//- sumDistancesToWrecks / 100
 		- (reaperClosest ? minDistanceReaper : 0) / 1000
 		- (destroyerClosest ? minDistanceDestroyer : 0) / 1000
+		//- distanceBestEnnemy / 1000
 		;
 }
 
@@ -1675,7 +1691,6 @@ int eval(const Board& simulatedBoard, const Board& previousBoard)
 Action generateRandomAction()
 {
 	Action action;
-	//action.type = rand() % 3;
 	action.type = MOVE_ACTION;
 	if (action.type > WAIT_ACTION)
 	{
