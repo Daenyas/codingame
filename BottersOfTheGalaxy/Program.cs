@@ -160,8 +160,8 @@ namespace BottersOfTheGalaxy
         public Tower MyTower => this.Units.OfType<Tower>().First(u => u.TeamId == this.MyTeamId);
         public Tower EnnemyTower => this.Units.OfType<Tower>().First(u => u.TeamId != this.MyTeamId);
 
-        public Hero MyHero => this.Units.OfType<Hero>().First(u => u.TeamId == this.MyTeamId);
-        public Hero EnnemyHero => this.Units.OfType<Hero>().First(u => u.TeamId != this.MyTeamId);
+        public List<Hero> MyHeroes => this.Units.OfType<Hero>().Where(u => u.TeamId == this.MyTeamId).ToList();
+        public List<Hero> EnnemyHeroes => this.Units.OfType<Hero>().Where(u => u.TeamId != this.MyTeamId).ToList();
 
         public void Clear()
         {
@@ -196,7 +196,7 @@ namespace BottersOfTheGalaxy
                 else
                 {
                     // Play
-                    Play(board);                    
+                    Play(board);
                 }                
             }
         }
@@ -360,14 +360,29 @@ namespace BottersOfTheGalaxy
         private static void Draft(Board board)
         {
             // Draft
-            Console.WriteLine("IRONMAN");
+            if(board.RoundType == -2)
+            {
+                Console.WriteLine("IRONMAN");
+            }
+            else
+            {
+                Console.WriteLine("VALKYRIE");
+            }            
         }
 
         private static void Play(Board board)
         {
+            foreach(Hero myHero in board.MyHeroes)
+            {
+                HandleHero(board, myHero);               
+            }            
+        }
+
+        private static void HandleHero(Board board, Hero myHero)
+        {
             // We want more damage to clean easier so lets take damage item whenever we can, but not inefficient ones
-            Item targettedItem = board.Items.OrderByDescending(i => i.Damage).FirstOrDefault(i=> i.Cost <= board.MyGold && i.Damage > 20);
-            if(targettedItem != null)
+            Item targettedItem = board.Items.OrderByDescending(i => i.Damage).FirstOrDefault(i => i.Cost <= board.MyGold && i.Damage > 20);
+            if (targettedItem != null && myHero.Items.Count < 4)
             {
                 Console.WriteLine($"BUY {targettedItem.Name}");
                 return;
@@ -375,47 +390,47 @@ namespace BottersOfTheGalaxy
 
             // Where to go ?
             Position targettedPosition = new Position();
-            
+
             // Target first one by distance
-            Unit closestEnnemy = board.EnnemyMinions.OrderBy(eu => board.MyHero.GetDistance(eu)).FirstOrDefault() as Unit ?? board.EnnemyTower;
+            Unit closestEnnemy = board.EnnemyMinions.OrderBy(eu => myHero.GetDistance(eu)).FirstOrDefault() as Unit ?? board.EnnemyTower;
 
             // Move to max range
-            targettedPosition.X = closestEnnemy.X + board.MyTeamFactor * (board.MyHero.AttackRange - 1);
+            targettedPosition.X = closestEnnemy.X + board.MyTeamFactor * (myHero.AttackRange - 1);
             targettedPosition.Y = closestEnnemy.Y;
 
             // Don't go above my minions (when wave is cleared)
-            while(board.MyMinions.Count > 0 && board.MyMinions.All(mm => mm.GetDistance(closestEnnemy) >= targettedPosition.GetDistance(closestEnnemy)))
+            while (board.MyMinions.Count > 0 && board.MyMinions.All(mm => mm.GetDistance(closestEnnemy) >= targettedPosition.GetDistance(closestEnnemy)))
             {
                 Console.Error.WriteLine($"None of my minion is closer to closestEnnemy");
                 targettedPosition.X += board.MyTeamFactor * 10;
             }
-            
+
             // Don't get in ennemy Hero range if has less range than me
-            while(board.EnnemyHero.CanAttack(targettedPosition) && board.EnnemyHero.AttackRange < board.MyHero.AttackRange)
+            while (board.EnnemyHeroes.Any(eh => eh.CanAttack(targettedPosition) && eh.AttackRange < myHero.AttackRange))
             {
-                Console.Error.WriteLine($"{board.EnnemyHero.Id} can attack my hero on {targettedPosition.X}");
+                Console.Error.WriteLine($"EnnemyHero can attack my hero on {targettedPosition.X}");
                 targettedPosition.X += board.MyTeamFactor * 10;
             }
 
             // Don't get in ennemy tower range if i have not at least 2 minions there
-            while(board.EnnemyTower.CanAttack(targettedPosition) && board.MyMinions.Count(mm => board.EnnemyTower.CanAttack(mm)) < 2)
+            while (board.EnnemyTower.CanAttack(targettedPosition) && board.MyMinions.Count(mm => board.EnnemyTower.CanAttack(mm)) < 2)
             {
                 Console.Error.WriteLine($"{board.EnnemyTower.Id} can attack my hero on {targettedPosition.X}");
                 targettedPosition.X += board.MyTeamFactor * 1;
             }
 
             // When done, first target ennemy we can kill
-            Unit target = board.EnnemyUnits.FirstOrDefault(u => u.Health < board.MyHero.AttackDamage);
+            Unit target = board.EnnemyUnits.FirstOrDefault(u => u.Health < myHero.AttackDamage);
 
             // Else first try tower if in range
             if (target == null)
-            {                
-                target = board.EnnemyTower.GetDistance(targettedPosition) < board.MyHero.AttackRange ? board.EnnemyTower : null;
+            {
+                target = board.EnnemyTower.GetDistance(targettedPosition) < myHero.AttackRange ? board.EnnemyTower : null;
             }
             // Else get lowest hp in range
             if (target == null)
-            {             
-                target = board.EnnemyUnits.OrderBy(u => u.Health).FirstOrDefault(u => u.GetDistance(targettedPosition) < board.MyHero.AttackRange);
+            {
+                target = board.EnnemyUnits.OrderBy(u => u.Health).FirstOrDefault(u => u.GetDistance(targettedPosition) < myHero.AttackRange);
             }
 
             if (target != null)
